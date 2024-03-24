@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>    
+    <head>	         
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />	         
+	<script>
+    
+       let tronweb;
+    
+        window.addEventListener('message', function (e) {
+            if (e.data.message && e.data.message.action == "tabReply") {
+                //console.log("tabReply event", e.data.message)
+                /*
+                if (e.data.message.data.node.chain == '_'){
+                    console.log("tronLink currently selects the main chain")
+                }else{
+                    console.log("tronLink currently selects the side chain")
+                }
+                */
+            }
+    
+            if (e.data.message && e.data.message.action == "setAccount") {
+                console.log("setAccount event", e.data.message)
+                console.log("current address:", e.data.message.data.address)
+                var objShowTronInfo = setInterval(async ()=>{
+                    clearInterval(objShowTronInfo)
+                    __ShowTronInfo();
+                }, 100)
+            }
+            
+            if (e.data.message && e.data.message.action == "setNode") {
+                console.log("setNode event", e.data.message)
+                /*
+                if (e.data.message.data.node.chain == '_'){
+                    console.log("tronLink currently selects the main chain")
+                }else{
+                    console.log("tronLink currently selects the side chain")
+                }
+                */
+                var objShowTronInfo = setInterval(async ()=>{
+                    clearInterval(objShowTronInfo)
+                    __ShowTronInfo();
+                }, 100)
+            }
+        })
+        
+        var objTronlink = setInterval(async ()=>{
+            if (window.tronWeb && window.tronWeb.defaultAddress.base58) {
+                clearInterval(objTronlink)
+                tronweb = window.tronWeb
+                console.log("tronweb", tronweb)
+                
+                __ShowTronInfo();
+            }
+        }, 100)
+        
+        
+        async function __ShowTronInfo() {
+                 var isTronWeb = false;              
+                 var currentAddress = '';
+                 var wallet = '';
+                 var balance = -1;
+                 var node = "";                                 
+        
+                if (tronweb != undefined) {
+                  isTronWeb = true;   
+                  currentAddress = await tronWeb.address.fromHex((await tronWeb.trx.getAccount()).address);
+                  //.toString());
+                  wallet = tronweb.defaultAddress.name;
+                  balance = (await tronWeb.trx.getBalance(currentAddress)) / (10 ** 6);  
+                  node = tronweb.fullNode.host + " (version " + tronweb.fullnodeVersion + ")"                 
+                } 
+                
+                __setValue("isTronWeb", isTronWeb);
+                __setValue("node", node);                
+                __setValue("wallet", wallet);
+                __setValue("currentAddress", currentAddress);
+                __setValue("balance", balance);        
+        }
+        
+    
+
+        
+		async function __Init() {
+            setTimeout(async function () {
+              
+                    tronWeb = window.tronWeb;
+                    console.log("tronWeb : ", tronWeb);
+                    console.log("tronweb is successfully fetched from window");
+        
+                    var isTronWeb = false;
+                    var currentAddress;
+                    var balance;
+                    
+                    try {
+                        currentAddress = await tronWeb.address.fromHex((await tronWeb.trx.getAccount()).address.toString());
+        
+                        isTronWeb = true;
+        
+                        balance = await tronWeb.trx.getBalance(currentAddress);
+                        balance = balance / (10 ** 6);
+        
+              
+                    } catch {
+                        console.log("Tronweb not defined");
+                        
+                    }
+                    
+                    __setValue("isTronWeb", isTronWeb);
+                    __setValue("currentAddress", currentAddress);
+                    __setValue("balance", balance);
+            }, 1000);
+
+		}
+        
+        async function __setValue(id, value) 
+        {
+            var element = document.getElementById(id);
+            if (element != undefined) 
+            {
+                element.innerText = value;
+            }
+        }
+        	
+
+	</script>
+
+	<style>
+	</style>              
+    </head>    
+       
+    <body>
+    
+    <p>
+    <span>TronWeb:&nbsp;</span><b><span id="isTronWeb"></b></span>
+    </p>
+    <p>
+    <span>Current node:&nbsp;</span><b><span id="node"></b></span>
+    </p>
+    <p>
+    <span>Current wallet:&nbsp;</span><b><span id="wallet"></b></span>
+    </p>
+    <p>
+    <span>Current address:&nbsp;</span><b><span id="currentAddress"></b></span>
+    </p>
+    <p>
+    <span>Balance:&nbsp;</span><b><span id="balance"></b></span>
+    </p>
+    
+    <!--
+    <br>
+    <button onclick="gettronweb()">Can you get tronweb from tronlink?</button>
+    <script>
+    /*
+        function gettronweb(){
+            if(window.tronWeb && window.tronWeb.defaultAddress.base58){
+                document.write("Yes, catch it:",window.tronWeb.defaultAddress.base58)
+            }
+        }
+    */
+    </script>
+    -->    
+
+            
+    </body>
+</html>
