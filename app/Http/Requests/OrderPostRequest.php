@@ -19,10 +19,25 @@ class OrderPostRequest extends FormRequest
 
         return [
             'amount' => 'required|integer|min:1000|max:' . $maxBigIntValue,
-            'source' => 'required|string|max:20',
-            'days' => 'required|integer|min:1|max: ' . $maxValue,
+            'resource' => 'required|string|max:20',
+            'hours' => 'required|integer|min:1|max: ' . $maxValue,
             'price' => 'required|integer|min:10|max: ' . $maxBigIntValue,
-            'address' => 'required|string|min:34|max:100',
+            'source_address' => 'required|string|min:34|max:100',
+            'target_address' => 'required|string|min:34|max:100',
+            'partial_fill' => 'required|boolean',
+            'multisignature' => 'required|boolean',
+        ];
+    }
+
+    /**
+     * Get the error messages for the defined validation rules.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'target_address.required' => 'A title is required',
         ];
     }
 }

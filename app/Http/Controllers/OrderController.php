@@ -4,13 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\OrderPostRequest;
 use App\Http\Services\GeneralService;
-use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use App\Models\Order;
 
 class OrderController extends Controller
 {
@@ -24,13 +24,10 @@ class OrderController extends Controller
     {
         $data = $request->safe()->all();
 
-        if (!$this->genService->isAddressCorrect($data['address'])) {
-            return back()->withErrors(['address' => 'Tron address is not valid'])->withInput();
+        if (!$this->genService->isAddressCorrect($data['target_address'])) {
+            return back()->withErrors(['target_address' => 'Tron address is not valid'])->withInput();
         }
 
-        Order::firstOrCreate(
-            $data,
-            $data
-        );
+        Order::create($data);
     }
 }

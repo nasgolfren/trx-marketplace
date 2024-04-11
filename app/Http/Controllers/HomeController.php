@@ -24,7 +24,9 @@ class HomeController extends Controller
     public function index(Request $request)
     {
         return Inertia::render('Welcome', [
-            'orders' => Order::all(),
+            'orders' => Order::orderBy('created_at', 'desc')->get(),
+            'resources' => config('app.resources'),
+            'formConfig' => config('app.formConfig'),
         ]);
     }
 }

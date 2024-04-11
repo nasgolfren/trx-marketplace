@@ -13,7 +13,7 @@ class Order extends Model
 
     protected $table = 'orders';
 
-    protected $fillable = ['amount', 'days', 'price', 'address', 'source'];
+    protected $fillable = ['amount', 'hours', 'price', 'target_address', 'source_address', 'resource', 'partial_fill', 'multisignature'];
 
     protected $hidden = ['id', 'updated_at', 'deleted_at'];
 

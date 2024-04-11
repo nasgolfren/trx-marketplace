@@ -31,3 +31,22 @@
 [x-cloak] {
     display: none;
 }
+
+.icon-container {
+    display: flex;
+    align-items: center; /* Align items vertically */
+}
+
+.material-symbols-outlined {
+    font-size: 20px !important;
+}
+
+.icon-container .material-symbols-outlined {
+    padding-left: 2px;
+}
+
+@media (max-width: 640px) { /* Adjust breakpoint as per your requirements */
+    .hide-on-mobile {
+        display: none !important;
+    }
+}

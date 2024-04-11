@@ -1,5 +1,7 @@
 import './bootstrap';
 import '../css/app.css';
+import 'material-icons/iconfont/material-icons.css';
+import 'material-symbols';
 
 import { createApp, h } from 'vue';
 import { createInertiaApp } from '@inertiajs/vue3';
@@ -11,6 +13,7 @@ import Ripple from 'primevue/ripple';
 import ToastService from 'primevue/toastservice';
 import Tooltip from 'primevue/tooltip';
 import FocusTrap from 'primevue/focustrap';
+import ConfirmationService from 'primevue/confirmationservice';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -26,6 +29,7 @@ createInertiaApp({
                 ripple: true,
             })
             .use(ToastService)
+            .use(ConfirmationService)
             .directive('ripple', Ripple)
             .directive('tooltip', Tooltip)
             .directive('focustrap', FocusTrap)

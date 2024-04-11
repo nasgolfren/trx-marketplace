@@ -1,10 +1,8 @@
 <script setup>
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { reactive, ref, computed, onMounted  } from 'vue';
+import { Head, Link, useForm, router } from '@inertiajs/vue3';
+import { reactive, ref, computed, onMounted, onBeforeMount } from 'vue';
 import Menubar from 'primevue/menubar';
-import Avatar from 'primevue/avatar';
 import Dialog from 'primevue/dialog';
-import Panel from 'primevue/panel';
 import Button from 'primevue/button';
 import Toast from 'primevue/toast';
 import { useToast } from 'primevue/usetoast';
@@ -13,22 +11,30 @@ import Fieldset from 'primevue/fieldset';
 import InputNumber from 'primevue/inputnumber';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
-import Divider from 'primevue/divider';
 import Image from 'primevue/image';
-import { router } from '@inertiajs/vue3';
 import { convertJsonToReadableText } from '@/functions';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
-import ColumnGroup from 'primevue/columngroup';   // optional
-import Row from 'primevue/row';                   // optional
+import moment from 'moment';
+import ProgressBar from 'primevue/progressbar';
+import InputGroup from 'primevue/inputgroup';
+import InputGroupAddon from 'primevue/inputgroupaddon';
+import ConfirmDialog from 'primevue/confirmdialog';
+import { useConfirm } from "primevue/useconfirm";
+import Checkbox from 'primevue/checkbox';
 
 
-// App control params
+/**
+ * App - setup
+ */
+const confirm = useConfirm();
 const toast = useToast();
+
+/**
+ * App - controlls
+ */
 const showWalletDetails = ref(false);
 const walletLoaded = ref(false);
-
-// tron-wallet params
 const tronWallet = ref();
 
 const walletAddress = ref();
@@ -37,25 +43,21 @@ const walletName = ref();
 const walletBandwidth = ref();
 const walletEnergy = ref();
 
-
-const sources = ref([
-    { name: 'Energy', code: 'energy' },
-    { name: 'Brandwidth', code: 'brandwidth' },
-]);
-
 const formOrder = useForm({
-    amount: 1000,
-    days: 3,
-    price: 50,
-    address: '',
-    selectedSource: {
-        name: 'Energy',
-        code: 'energy',
-    },
-})
+    amount: 0,
+    price: 0,
+    target_address: '',
+    selectedResource: {},
+    selectedDurationSource: {},
+    partial_fill: false,
+    multisignature: false,
+});
 
-defineProps({
+const props = defineProps({
     orders: Array,
+    durations: Array,
+    resources: Array,
+    formConfig: Object,
 });
 
 const buttonitems = [
@@ -72,11 +74,26 @@ const buttonitems = [
         command: () => {
             tronWallet.value = null;
             walletLoaded.value = false;
+            delete formOrder.errors.source_address;
         }
     },
 ];
 
+/**
+ *
+ * App init
+ *
+ */
+onBeforeMount(() => {
+  formOrder.amount = props.formConfig.energy.minAmountValue;
+  formOrder.selectedResource = props.resources.find((resource) => resource.code == 'energy');
+  formOrder.selectedDurationSource = props.formConfig.energy.durations.find((duration) => duration.code == 72);
+  formOrder.price = formOrder.selectedDurationSource.price;
+})
+
+
 const initTrxWallet = () => {
+    try {
     setTimeout(async function () {
         __initWallet()
         .then(function(response) {
@@ -84,9 +101,12 @@ const initTrxWallet = () => {
         })
         .catch(function (error) {
             console.log(error);
-            toast.add({ severity: 'error', summary: 'Error', detail: error, life: 3000 });
+            toast.add({ severity: 'error', summary: 'Error 1', detail: error, life: 3000 });
         });
     }, 500);
+    } catch (error) {
+        console.log('initTrxWallet - try: ', error);
+    }
 }
 
 async function __initWallet() {
@@ -114,15 +134,25 @@ async function __showTronInfo() {
         walletBandwidth.value = (await localWalletObj.trx.getBandwidth(walletAddress.value));
         walletEnergy.value = (await localWalletObj.trx.getBandwidth(walletAddress.value));
 
+        delete formOrder.errors.source_address;
     } catch (error) {
         console.log('error: ', error);
 
-        toast.add({ severity: 'error', summary: 'Error', detail: error, life: 3000 });
+        toast.add({ severity: 'error', summary: 'Error', detail: error + ', Try to connect to your TronLink first', life: 3000 });
         walletLoaded.value = false;
     }
 }
 
-async function copyTrxWallet() {
+const isWalletDisconnected = computed(() => {
+    return walletAddress.value == undefined || walletAddress.value == null;
+});
+
+/**
+ *
+ * Utility functions
+ *
+ */
+ async function copyTrxWallet() {
     try {
         await navigator.clipboard.writeText(walletAddress.value);
         toast.add({ severity: 'info', summary: 'Info', detail: 'Address was copied to clipboard', life: 3000 });
@@ -132,10 +162,37 @@ async function copyTrxWallet() {
     }
 }
 
-const updateDaysAmount = (event) => {
-    formOrder.days = event.value;
+const isValueHours = (value) => {
+    return (value % 24) > 0;
 };
 
+const showOrderDetails = (order) => {
+    console.log("data", order)
+    console.log("data", order.unique_id)
+};
+
+/**
+ *
+ * Form - setup
+ *
+ */
+const formConfigDurations = computed(() => {
+    return props.formConfig[formOrder.selectedResource.code].durations;
+});
+
+const minAmountValue = computed(() => {
+    return props.formConfig[formOrder.selectedResource.code].minAmountValue;
+});
+
+const minPriceValue = computed(() => {
+    return props.formConfig[formOrder.selectedResource.code].durations.find((duration) => duration.code == formOrder.selectedDurationSource.code).price;
+});
+
+/**
+ *
+ * Form - live data handeling
+ *
+ */
 const updateAmount = (event) => {
     formOrder.amount = event.value;
 };
@@ -143,18 +200,28 @@ const updatePrice = (event) => {
     formOrder.price = event.value;
 };
 
+const changeResource = (event) => {
+    formOrder.amount = minAmountValue.value;
+    formOrder.price = props.formConfig[formOrder.selectedResource.code].durations.find((duration) => duration.code == formOrder.selectedDurationSource.code).price;
+
+    formOrder.selectedDurationSource = props.formConfig[formOrder.selectedResource.code].durations.find((duration) => duration.code == formOrder.selectedDurationSource.code);
+};
+const changeDuration = (event) => {
+    formOrder.price = props.formConfig[formOrder.selectedResource.code].durations.find((duration) => duration.code == formOrder.selectedDurationSource.code).price;
+};
+
 let validationTimeout = null;
 const tronAddressValidity = () => {
-    if (formOrder.address == '' || formOrder.address.length < 34) {
+    if (formOrder.target_address == '' || formOrder.target_address.length < 34) {
         return;
     }
 
-    delete formOrder.errors.address;
+    delete formOrder.errors.target_address;
 
     const options = {
         method: 'POST',
         headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: JSON.stringify({ address: formOrder.address, visible: true })
+        body: JSON.stringify({ address: formOrder.target_address, visible: true })
     };
 
     // if (validationTimeout) {
@@ -166,56 +233,74 @@ const tronAddressValidity = () => {
             .then(response => response.json())
             .then(function (response) {
                 if (response.result == false) {
-                    formOrder.errors.address = 'Tron address is not valid';
+                    formOrder.errors.target_address = 'Tron address is not valid';
                     //toast.add({ severity: 'error', summary: 'Error', detail: 'Tron address is not valid', life: 3000 });
-                    return;
                 }
 
                 //toast.add({ severity: 'info', summary: 'Info', detail: 'Tron address is OK', life: 3000 });
             })
             .catch(function (error) {
 
-                formOrder.errors.address = 'Something goes wrong, try it again or contact admin!';
+                formOrder.errors.target_address = 'Something goes wrong, try it again or contact admin!';
 
                 //toast.add({ severity: 'error', summary: 'Error', detail: error, life: 3000 });
             });
     //}, 1000);
 };
 
+/**
+ *
+ * Form - order data
+ *
+ */
 const finalPrice = computed(() => {
-  let result = formOrder.amount * formOrder.price * formOrder.days;
-  return result ? result / 1000000 : 0;
+    let result = formOrder.amount * formOrder.price;
+    let duration = isValueHours(formOrder.selectedDurationSource.code) ? formOrder.selectedDurationSource.code : (formOrder.selectedDurationSource.code / 24);
+
+    return result ? Math.round(((result / 1000000) * duration) * 100) / 100 : 0;
+});
+
+const isSubmitButtonDisabled = computed(() => {
+    return Object.keys(formOrder.errors).length >= 1
+        || !formOrder.target_address || formOrder.target_address.length < 34;
 });
 
 const formOrderSubmit = () => {
-    formOrder.transform((data) => ({
-        ...data,
-        'source': data.selectedSource.code,
-    }))
-    .post('/orders', {
-        errorBag: 'submitOrder',
-        preserveState: true,
-        preserveScroll: true,
-        onSuccess: (response) => {
-            toast.add({ severity: 'success', summary: 'Success', detail: 'The order has been successfully created!', life: 3000 });
+    confirm.require({
+        group: 'headless',
+        header: 'Create the order',
+        message: 'Please confirm to proceed the order',
+        accept: () => {
+            formOrder.transform((data) => ({
+                ...data,
+                'resource': data.selectedResource.code,
+                'hours': data.selectedDurationSource.code,
+                'source_address': walletAddress.value,
+            }))
+            .post('/orders', {
+                errorBag: 'submitOrder',
+                preserveState: true,
+                preserveScroll: true,
+                onSuccess: (response) => {
+                    toast.add({ severity: 'success', summary: 'Success', detail: 'The order has been successfully created!', life: 3000 });
+                },
+                onError: (errors) => {
+                    toast.add({ severity: 'error', summary: 'Error', detail: convertJsonToReadableText(errors), life: 3000 });
+                    console.log("error /orders - ", convertJsonToReadableText(errors));
+                }
+            });
         },
-        onError: (errors) => {
-            toast.add({ severity: 'error', summary: 'Error', detail: convertJsonToReadableText(errors), life: 3000 });
-            console.log("error", convertJsonToReadableText(errors));
+        reject: () => {
+            //toast.add({ severity: 'error', summary: 'Rejected', detail: 'You cancelled the order', life: 3000 });
         }
     });
 };
-
-const isSubmitButtonDisabled = computed(() => {
-    return Object.keys(formOrder.errors).length >= 1;
-});
 </script>
 
 <template>
-
     <Head title="Welcomeeeee" />
 
-    <div class="container mx-auto">
+    <div class="container mx-auto p-2 sm:p-0">
         <Menubar class="my-8">
             <template #start>
                 <svg width="35" height="40" viewBox="0 0 35 40" fill="none" xmlns="http://www.w3.org/2000/svg"
@@ -239,55 +324,11 @@ const isSubmitButtonDisabled = computed(() => {
                         <span class="ml-2 flex items-center font-bold">{{ walletAddress }}</span>
                     </SplitButton>
                 </div>
-
-                <Dialog v-model:visible="showWalletDetails" modal header="Wallet details"
-                    :style="{ width: 'auto', minWidth: '30rem', padding: '50px' }"
-                    :breakpoints="{ '1199px': '75vw', '575px': '90vw' }">
-                    <template #header>
-                        <div class="inline-flex items-center justify-center gap-2">
-                            <span class="pi pi-wallet mr-2 text-primary-500"></span>
-                            <span class="font-bold whitespace-nowrap font-bold font-mono ">Wallet details</span>
-                        </div>
-                    </template>
-
-                    <div class="grid grid-cols-1 gap-3 content-center ">
-                        <div class="grid grid-cols-1 md:grid-cols-3">
-                            <div class="font-bold ">Wallet name</div>
-                            <div class="col-span-2">{{ walletName }}</div>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3">
-                            <div class="font-bold">
-                                Address
-                                <Button @click="copyTrxWallet()" class="py-[2px] inline-flex sm:hidden"
-                                    icon="pi pi-copy" text aria-label="copy wallet" />
-                            </div>
-                            <div class="col-span-2">{{ walletAddress }} <Button @click="copyTrxWallet()"
-                                    class="py-[2px] hidden sm:inline-flex" icon="pi pi-copy" text
-                                    aria-label="copy wallet" /></div>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3">
-                            <div class="font-bold">Balance</div>
-                            <div class="col-span-2">{{ walletBalance }}</div>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3">
-                            <div class="font-bold">Energy</div>
-                            <div class="col-span-2">{{ walletEnergy }}</div>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3">
-                            <div class="font-bold">Bandwidth</div>
-                            <div class="col-span-2">{{ walletBandwidth }}</div>
-                        </div>
-                    </div>
-
-                    <template #footer>
-                        <Button label="Ok" @click="showWalletDetails = false" text />
-                    </template>
-                </Dialog>
             </template>
         </Menubar>
 
         <div class="grid gap-4 grid-cols-3 grid-rows-1">
-            <div v-focustrap>
+            <div class="col-span-full lg:col-span-1" v-focustrap>
                 <form @submit.prevent="formOrderSubmit">
                 <Fieldset>
                     <template #legend>
@@ -302,7 +343,7 @@ const isSubmitButtonDisabled = computed(() => {
                                 Buy amount <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The amount expected in energy or bandwidth'" placeholder="Top"></span>
                             </label>
                             <div class="mt-1">
-                                <InputNumber v-model="formOrder.amount" @input="updateAmount" class="w-full" inputId="integeronly" showButtons :min="0" :step="1000" />
+                                <InputNumber v-model="formOrder.amount" @input="updateAmount" class="w-full" inputId="integeronly" showButtons :min="minAmountValue" :max="500000000" :step="1000" :invalid="formOrder.errors.amount" />
                                 <div class="text-red-500 text-xs">{{ formOrder.errors.amount }}</div>
                             </div>
                         </div>
@@ -312,8 +353,8 @@ const isSubmitButtonDisabled = computed(() => {
                                 Resource <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The resource type for the order'" placeholder="Top"></span>
                             </label>
                             <div class="mt-1">
-                                <Dropdown v-model="formOrder.selectedSource" :options="sources" class="w-full" optionLabel="name" />
-                                <div class="text-red-500 text-xs">{{ formOrder.errors.source }}</div>
+                                <Dropdown v-model="formOrder.selectedResource" :options="resources" @change="changeResource" class="w-full" optionLabel="name" :invalid="formOrder.errors.resource" />
+                                <div class="text-red-500 text-xs">{{ formOrder.errors.resource }}</div>
                             </div>
                         </div>
 
@@ -322,39 +363,66 @@ const isSubmitButtonDisabled = computed(() => {
                                 Duration <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The duration of the rented resource in days'" placeholder="Top"></span>
                             </label>
                             <div class="mt-1">
-                                <InputNumber v-model="formOrder.days" @input="updateDaysAmount" class="w-full"  inputId="expiry" suffix=" days" showButtons :min="1" />
-                                <div class="text-red-500 text-xs">{{ formOrder.errors.days }}</div>
+                                <Dropdown v-model="formOrder.selectedDurationSource" @change="changeDuration" :options="formConfigDurations" class="w-full" optionLabel="name" :invalid="formOrder.errors.hours" />
+                                <div class="text-red-500 text-xs">{{ formOrder.errors.hours }}</div>
                             </div>
                         </div>
 
                         <div class="w-full mt-3">
                             <label class="block text-xs font-medium text-gray-900">
-                                Price <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The price/day in sun for the expected resource'" placeholder="Top"></span>
+                                Price <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The price/day in SUN for the expected resource'" placeholder="Top"></span>
                             </label>
                             <div class="mt-1">
-                                <InputNumber v-model="formOrder.price" @input="updatePrice" class="w-full" inputId="integeronly" showButtons :min="0" :step="10" />
+                                <InputNumber v-model="formOrder.price" @input="updatePrice" class="w-full" inputId="integeronly" showButtons :min="minPriceValue" :step="10" :invalid="formOrder.errors.price" />
                                 <div class="text-red-500 text-xs">{{ formOrder.errors.price }}</div>
                             </div>
                         </div>
 
                         <div class="w-full mt-3">
                             <label class="block text-xs font-medium text-gray-900">
-                                Destination <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The target address of the energy / bandwidth obtained. It cannot be a contract address or any other invalid address'" placeholder="Top"></span>
+                                Target <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The target address of the energy / bandwidth obtained. It cannot be a contract address or any other invalid address'" placeholder="Top"></span>
                             </label>
                             <div class="mt-1">
-                                <InputText type="text" v-model="formOrder.address" @input="tronAddressValidity" class="w-full" placeholder="address" />
-                                <div class="text-red-500 text-xs">{{ formOrder.errors.address }}</div>
+                                <InputGroup>
+                                    <InputGroupAddon>
+                                        <i class="pi pi-wallet"></i>
+                                    </InputGroupAddon>
+                                    <InputText type="text" v-model="formOrder.target_address" @input="tronAddressValidity" class="w-full" placeholder="TRX address" :invalid="formOrder.errors.target_address" />
+                                </InputGroup>
+                                <div class="text-red-500 text-xs">{{ formOrder.errors.target_address }}</div>
+                            </div>
+                        </div>
+
+                        <div class="w-full mt-4">
+                            <label class="block text-xs font-medium text-gray-900">
+                                Options
+                            </label>
+                            <div class="mt-1">
+                                <div>
+                                    <Checkbox v-model="formOrder.partial_fill" inputId="partial_fill" :binary="true" />
+                                    <label for="partial_fill" class="ml-2">
+                                        Allow Partial Fill
+                                        <span class="pi pi-question-circle text-primary-500 text-sm pl-1" v-tooltip.top="'If checked it will allow the order to be filled partially. If unchecked the order won\'t be filled unless there is 1 address which can complete the order in 1 transaction.'" placeholder="Top"></span>
+                                    </label>
+                                </div>
+                                <div class="mt-1">
+                                    <Checkbox v-model="formOrder.multisignature" inputId="multisignature" :binary="true" />
+                                    <label for="multisignature" class="ml-2">
+                                        Multisignature
+                                        <span class="pi pi-question-circle text-primary-500 text-sm pl-1" v-tooltip.top="'If checked a multisignature popup appear to create the multisignature transaction. This works for any kind of multisignature address.'" placeholder="Top"></span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
 
                         <div class="mt-5">
                             <div class="flex justify-between">
-                                <div>{{ formOrder.selectedSource.name }}</div>
-                                <div v-if="formOrder.selectedSource.code == 'energy'" class="text-amber-500 font-semibold">
-                                    {{ formOrder.amount }} <span class="pi pi-bolt"></span>
+                                <div>{{ formOrder.selectedResource.name }}</div>
+                                <div v-if="formOrder.selectedResource.code == 'energy'" class="text-blue-600 font-semibold">
+                                    {{ formOrder.amount }}<span class="pi pi-bolt"></span>
                                 </div>
-                                <div v-else class="text-cyan-500 font-semibold">
-                                    {{ formOrder.amount }} <span class="pi pi-arrows-h"></span>
+                                <div v-else class="text-emerald-600 font-semibold icon-container">
+                                    {{ formOrder.amount }}<span class="material-symbols-outlined">avg_pace</span>
                                 </div>
                             </div>
                             <div class="flex justify-between mt-2 font-semibold">
@@ -365,41 +433,155 @@ const isSubmitButtonDisabled = computed(() => {
                             </div>
                         </div>
 
-                        <Button class="mt-4" type="submit" label="Submit Order" :disabled="formOrder.processing || isSubmitButtonDisabled" />
+                        <Button class="mt-4" type="submit" label="SELL" severity="danger" :disabled="formOrder.processing || isSubmitButtonDisabled" />
                     </div>
                 </Fieldset>
                 </form>
             </div>
-            <div class="col-span-2">
+
+            <div class="col-span-full lg:col-span-2">
                 <Fieldset>
                     <template #legend>
                         <div class="flex items-center gap-2 px-2">
                             <span class="pi pi-book mr-2 text-primary-500"></span>
-                            <span class="font-bold">Orders History</span>
+                            <span class="font-bold">Orders</span>
                         </div>
                     </template>
 
-                    <DataTable :value="orders" tableStyle="min-width: 50rem">
-                        <Column field="amount" header="Date"></Column>
-                        <Column field="amount" header="Amount"></Column>
-                        <Column field="days" header="Days"></Column>
-                        <Column field="price" header="Price"></Column>
-                        <Column field="source" header="Source"></Column>
-                    </DataTable>
+                    <DataTable :value="orders" stripedRows paginator :size="'small'" :rows="10" :rowsPerPageOptions="[10, 20, 50]">
+                        <Column header="">
+                            <template #body="{ data }">
+                                <Button icon="pi pi-info-circle" severity="info" text outlined rounded aria-label="User" @click="showOrderDetails(data)" />
+                            </template>
+                        </Column>
+                        <Column field="created_at" header="Date">
+                            <template #header>
+                                <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The date when the order has been created'" placeholder="Top"></span>
+                            </template>
+                            <template #body="{ data }">
+                                {{ moment(data.created_at).format('h:mm') }}
+                                <div class="text-xs">{{ moment(data.created_at).format('MM-DD') }}</div>
+                            </template>
+                        </Column>
+                        <Column field="amount" header="Resource" class="hide-on-mobile">
+                            <template #header>
+                                <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'Type of resource'" placeholder="Top"></span>
+                            </template>
+                            <template #body="{ data }">
+                                <div v-if="data.resource == 'energy'" class="text-blue-600 font-semibold">
+                                    {{ data.amount }}<span class="pi pi-bolt"></span>
+                                </div>
+                                <div v-else class="text-emerald-600 font-semibold icon-container">
+                                    {{ data.amount }}<span class="material-symbols-outlined">avg_pace</span>
+                                </div>
 
+                                <div class="text-xs">
+                                    / {{ data.hours }}
+                                    <span v-if="isValueHours(data.hours)">hours</span>
+                                    <span v-else>days</span>
+                                </div>
+                            </template>
+                        </Column>
+                        <Column header="Price">
+                            <template #header>
+                                <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The price/day in SUN for resource unit. Note: 1 SUN = 0.000001 TRX'" placeholder="Top"></span>
+                            </template>
+                            <template #body="{ data }">
+                                price
+                            </template>
+                        </Column>
+                        <Column header="Payout">
+                            <template #header>
+                                <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The payout to the seller / the payment of the buyer'" placeholder="Top"></span>
+                            </template>
+                            <template #body="{ data }">
+                                Payout
+                            </template>
+                        </Column>
+                        <Column header="Fullfilled" class="hide-on-mobile">
+                            <template #header>
+                                <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'A percentage how much the order is completed'" placeholder="Top"></span>
+                            </template>
+                            <template #body="{ data }">
+                                <ProgressBar :value="50"></ProgressBar>
+                            </template>
+                        </Column>
+                    </DataTable>
                 </Fieldset>
             </div>
         </div>
-
     </div>
 
     <Toast style="top: 75px;" />
+
+    <Dialog v-model:visible="showWalletDetails" modal header="Wallet details"
+        :style="{ width: 'auto', minWidth: '30rem', padding: '50px' }"
+        :breakpoints="{ '1199px': '75vw', '575px': '90vw' }">
+        <template #header>
+            <div class="inline-flex items-center justify-center gap-2">
+                <span class="pi pi-wallet mr-2 text-primary-500"></span>
+                <span class="font-bold whitespace-nowrap font-bold font-mono ">Wallet details</span>
+            </div>
+        </template>
+
+        <div class="grid grid-cols-1 gap-3 content-center ">
+            <div class="grid grid-cols-1 md:grid-cols-3">
+                <div class="font-bold ">Wallet name</div>
+                <div class="col-span-2">{{ walletName }}</div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3">
+                <div class="font-bold">
+                    Address
+                    <Button @click="copyTrxWallet()" class="py-[2px] inline-flex sm:hidden"
+                        icon="pi pi-copy" text aria-label="copy wallet" />
+                </div>
+                <div class="col-span-2">{{ walletAddress }} <Button @click="copyTrxWallet()"
+                        class="py-[2px] hidden sm:inline-flex" icon="pi pi-copy" text
+                        aria-label="copy wallet" /></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3">
+                <div class="font-bold">Balance</div>
+                <div class="col-span-2">{{ walletBalance }}</div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3">
+                <div class="font-bold">Energy</div>
+                <div class="col-span-2">{{ walletEnergy }}</div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3">
+                <div class="font-bold">Bandwidth</div>
+                <div class="col-span-2">{{ walletBandwidth }}</div>
+            </div>
+        </div>
+
+        <template #footer>
+            <Button label="Ok" @click="showWalletDetails = false" text />
+        </template>
+    </Dialog>
+
+    <ConfirmDialog group="headless">
+        <template #container="{ message, acceptCallback, rejectCallback }">
+            <div class="flex flex-col items-center p-5 bg-surface-0 dark:bg-surface-700 rounded-md">
+                <div class="rounded-full bg-primary-500 dark:bg-primary-400 text-surface-0 dark:text-surface-900 inline-flex justify-center items-center h-[6rem] w-[6rem] -mt-[3rem]">
+                    <i class="pi pi-question text-5xl"></i>
+                </div>
+                <span class="font-bold text-2xl block mb-2 mt-4">{{ message.header }}</span>
+                <p class="mb-0">{{ message.message }}</p>
+                <div v-if="isWalletDisconnected" class="flex items-center mt-4">
+                    <Button v-if="!walletLoaded" @click="initTrxWallet()" outlined>
+                        <Image src="/images/tronlink_icon.png" alt="Image" width="20px" />
+                        <span class="px-3 font-semibold">Connect wallet</span>
+                    </Button>
+                    <Button label="Cancel" class="ml-4" severity="danger" outlined @click="rejectCallback"></Button>
+                </div>
+                <div v-else class="flex items-center gap-2 mt-4">
+                    <Button label="Confirm" @click="acceptCallback"></Button>
+                    <Button label="Cancel" severity="danger" outlined @click="rejectCallback"></Button>
+                </div>
+            </div>
+        </template>
+    </ConfirmDialog>
 </template>
 
-<style module>
-.myinput {
-    border-radius: 2rem;
-    padding: 1rem 2rem;
-    border-width: 2px;
-}
+<style>
+
 </style>

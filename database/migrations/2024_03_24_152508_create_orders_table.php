@@ -16,10 +16,14 @@ return new class extends Migration
             $table->uuid('unique_id');
 
             $table->unsignedBigInteger('amount');
-            $table->unsignedInteger('days');
+            $table->unsignedInteger('hours');
             $table->unsignedBigInteger('price');
-            $table->string('address');
-            $table->string('source');
+            $table->string('source_address');
+            $table->string('target_address');
+            $table->string('resource');
+
+            $table->boolean('partial_fill');
+            $table->boolean('multisignature');
 
             $table->timestamps();
             $table->softDeletes();
