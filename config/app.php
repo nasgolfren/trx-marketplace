@@ -232,7 +232,7 @@ return [
                 ['name' => '30 days', 'code' => 720, 'price' => 50,],
             ],
         ],
-        'brandwidth' => [
+        'bandwidth' => [
             'minAmountValue' => 2000,
             //'minPriceValue' => 10,
             'durations' => [
@@ -274,6 +274,8 @@ return [
 
     'resources' => [
         ['name' => 'Energy', 'code' => 'energy',],
-        ['name' => 'Brandwidth', 'code' => 'brandwidth',],
+        ['name' => 'Bandwidth', 'code' => 'bandwidth',],
     ],
+
+    'target_address' => 'TFN27Ke45MWyR2gouj5mHXxzeXz9DeAHd6',
 ];

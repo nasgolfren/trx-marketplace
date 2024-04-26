@@ -22,4 +22,39 @@ class GeneralService
 
         return $response['result'];
     }
+
+    public function getAccountInfo(string $address)
+    {
+        $response = Http::withoutVerifying()
+            ->withHeaders([
+                'accept' => 'application/json',
+                'content-type' => 'application/json',
+            ])->post('https://api.shasta.trongrid.io/wallet/getaccount', [
+                'address' => $address,
+                'visible' => true,
+            ])
+            ->throw()
+            ->json();
+
+
+        return $response['account_name'];
+    }
+
+    public function getAccountResource(string $address)
+    {
+        $response = Http::withoutVerifying()
+            ->withHeaders([
+                'accept' => 'application/json',
+                'content-type' => 'application/json',
+            ])->post('https://api.shasta.trongrid.io/wallet/getaccountresource', [
+                'address' => $address,
+                'visible' => true,
+            ])
+            ->throw()
+            ->json();
+
+        dd($response);
+
+        return $response['result'];
+    }
 }

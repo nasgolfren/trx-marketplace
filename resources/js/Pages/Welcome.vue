@@ -1,5 +1,5 @@
 <script setup>
-import { Head, Link, useForm, router } from '@inertiajs/vue3';
+import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { reactive, ref, computed, onMounted, onBeforeMount } from 'vue';
 import Menubar from 'primevue/menubar';
 import Dialog from 'primevue/dialog';
@@ -34,23 +34,17 @@ const toast = useToast();
  * App - controlls
  */
 const showWalletDetails = ref(false);
-const walletLoaded = ref(false);
+const walletLoading = ref(false);
 const tronWallet = ref();
-
-const walletAddress = ref();
-const walletBalance = ref();
-const walletName = ref();
-const walletBandwidth = ref();
-const walletEnergy = ref();
 
 const formOrder = useForm({
     amount: 0,
     price: 0,
-    target_address: '',
+    source_address: '',
     selectedResource: {},
     selectedDurationSource: {},
-    partial_fill: false,
-    multisignature: false,
+    partial_fill: true,
+    multisignature: true,
 });
 
 const props = defineProps({
@@ -58,6 +52,7 @@ const props = defineProps({
     durations: Array,
     resources: Array,
     formConfig: Object,
+    connectedWallet: Object,
 });
 
 const buttonitems = [
@@ -73,8 +68,17 @@ const buttonitems = [
         icon: 'pi pi-power-off',
         command: () => {
             tronWallet.value = null;
-            walletLoaded.value = false;
             delete formOrder.errors.source_address;
+
+            router.delete('/wallet-info', {
+                preserveState: true,
+                onSuccess: page => {
+                    toast.add({ severity: 'info', summary: 'Info', detail: 'Wallet was disconnected', life: 3000 });
+                },
+                onError: errors => {
+                    toast.add({ severity: 'error', summary: 'Error', detail: error, life: 5000 });
+                },
+            });
         }
     },
 ];
@@ -85,26 +89,29 @@ const buttonitems = [
  *
  */
 onBeforeMount(() => {
-  formOrder.amount = props.formConfig.energy.minAmountValue;
-  formOrder.selectedResource = props.resources.find((resource) => resource.code == 'energy');
-  formOrder.selectedDurationSource = props.formConfig.energy.durations.find((duration) => duration.code == 72);
-  formOrder.price = formOrder.selectedDurationSource.price;
+    formOrder.amount = props.formConfig.energy.minAmountValue;
+    formOrder.selectedResource = props.resources.find((resource) => resource.code == 'energy');
+    formOrder.selectedDurationSource = props.formConfig.energy.durations.find((duration) => duration.code == 72);
+    formOrder.price = formOrder.selectedDurationSource.price;
 })
 
 
 const initTrxWallet = () => {
     try {
-    setTimeout(async function () {
-        __initWallet()
-        .then(function(response) {
-            __showTronInfo()
-        })
-        .catch(function (error) {
-            console.log(error);
-            toast.add({ severity: 'error', summary: 'Error 1', detail: error, life: 3000 });
-        });
-    }, 500);
+        walletLoading.value = true;
+
+        setTimeout(async function () {
+            __initWallet()
+                .then(function(response) {
+                    __showTronInfo()
+                })
+                .catch(function (error) {
+                    console.log('__initWallet error:', error);
+                    toast.add({ severity: 'error', summary: 'Error', detail: error, life: 5000 });
+                });
+        }, 500);
     } catch (error) {
+        walletLoading.value = false;
         console.log('initTrxWallet - try: ', error);
     }
 }
@@ -126,26 +133,37 @@ async function __showTronInfo() {
     try {
         let localWalletObj = tronWallet.value;
 
-        walletLoaded.value = true;
-
-        walletAddress.value = await localWalletObj.address.fromHex((await localWalletObj.trx.getAccount()).address);
-        walletName.value = localWalletObj.defaultAddress.name;
-        walletBalance.value = (await localWalletObj.trx.getBalance(walletAddress.value)) / (10 ** 6);
-        walletBandwidth.value = (await localWalletObj.trx.getBandwidth(walletAddress.value));
-        walletEnergy.value = (await localWalletObj.trx.getBandwidth(walletAddress.value));
+        let account_info = await localWalletObj.trx.getAccount();
+        let walletAddress = await localWalletObj.address.fromHex(account_info.address);
+        let walletName = await localWalletObj.defaultAddress.name;
+        let account_resource_info = await localWalletObj.trx.getAccountResources(account_info.address);
 
         delete formOrder.errors.source_address;
-    } catch (error) {
-        console.log('error: ', error);
 
-        toast.add({ severity: 'error', summary: 'Error', detail: error + ', Try to connect to your TronLink first', life: 3000 });
-        walletLoaded.value = false;
+        router.post('/wallet-info', {
+            'account': account_info,
+            'account_resource': account_resource_info,
+            'wallet_address': walletAddress,
+            'wallet_name': walletName,
+        },{
+            preserveState: true,
+            onSuccess: page => {
+                toast.add({ severity: 'info', summary: 'Info', detail: 'Wallet successfully connected', life: 3000 });
+            },
+            onError: errors => {
+                console.log('Error saving data to session:', errors);
+                toast.add({ severity: 'error', summary: 'Error', detail: 'Wallet cannot to connect', life: 5000 });
+            },
+            onFinish: visit => {
+                walletLoading.value = false;
+            },
+        });
+
+    } catch (error) {
+        console.log('__showTronInfo error: ', error);
+        toast.add({ severity: 'error', summary: 'Error', detail: error + ', Try to connect to your TronLink first', life: 5000 });
     }
 }
-
-const isWalletDisconnected = computed(() => {
-    return walletAddress.value == undefined || walletAddress.value == null;
-});
 
 /**
  *
@@ -154,11 +172,11 @@ const isWalletDisconnected = computed(() => {
  */
  async function copyTrxWallet() {
     try {
-        await navigator.clipboard.writeText(walletAddress.value);
+        await navigator.clipboard.writeText(props.connectedWallet.wallet_address);
         toast.add({ severity: 'info', summary: 'Info', detail: 'Address was copied to clipboard', life: 3000 });
     } catch (error) {
         console.log('error: ', error);
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Copy process interupted', life: 3000 });
+        toast.add({ severity: 'error', summary: 'Error', detail: 'Copy process interupted', life: 5000 });
     }
 }
 
@@ -210,42 +228,29 @@ const changeDuration = (event) => {
     formOrder.price = props.formConfig[formOrder.selectedResource.code].durations.find((duration) => duration.code == formOrder.selectedDurationSource.code).price;
 };
 
-let validationTimeout = null;
 const tronAddressValidity = () => {
-    if (formOrder.target_address == '' || formOrder.target_address.length < 34) {
+    if (formOrder.source_address == '' || formOrder.source_address.length < 34) {
         return;
     }
-
-    delete formOrder.errors.target_address;
+    delete formOrder.errors.source_address;
 
     const options = {
         method: 'POST',
         headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: JSON.stringify({ address: formOrder.target_address, visible: true })
+        body: JSON.stringify({ address: formOrder.source_address, visible: true })
     };
 
-    // if (validationTimeout) {
-    //     clearTimeout(validationTimeout);
-    // }
+    fetch('https://api.shasta.trongrid.io/wallet/validateaddress', options)
+        .then(response => response.json())
+        .then(function (response) {
+            if (response.result == false) {
+                formOrder.errors.source_address = 'Tron address is not valid';
+            }
+        })
+        .catch(function (error) {
 
-    //validationTimeout = setTimeout(() => {
-        fetch('https://api.shasta.trongrid.io/wallet/validateaddress', options)
-            .then(response => response.json())
-            .then(function (response) {
-                if (response.result == false) {
-                    formOrder.errors.target_address = 'Tron address is not valid';
-                    //toast.add({ severity: 'error', summary: 'Error', detail: 'Tron address is not valid', life: 3000 });
-                }
-
-                //toast.add({ severity: 'info', summary: 'Info', detail: 'Tron address is OK', life: 3000 });
-            })
-            .catch(function (error) {
-
-                formOrder.errors.target_address = 'Something goes wrong, try it again or contact admin!';
-
-                //toast.add({ severity: 'error', summary: 'Error', detail: error, life: 3000 });
-            });
-    //}, 1000);
+            formOrder.errors.source_address = 'Something goes wrong, try it again or contact admin!';
+        });
 };
 
 /**
@@ -262,7 +267,7 @@ const finalPrice = computed(() => {
 
 const isSubmitButtonDisabled = computed(() => {
     return Object.keys(formOrder.errors).length >= 1
-        || !formOrder.target_address || formOrder.target_address.length < 34;
+        || !formOrder.source_address || formOrder.source_address.length < 34;
 });
 
 const formOrderSubmit = () => {
@@ -275,7 +280,6 @@ const formOrderSubmit = () => {
                 ...data,
                 'resource': data.selectedResource.code,
                 'hours': data.selectedDurationSource.code,
-                'source_address': walletAddress.value,
             }))
             .post('/orders', {
                 errorBag: 'submitOrder',
@@ -285,7 +289,7 @@ const formOrderSubmit = () => {
                     toast.add({ severity: 'success', summary: 'Success', detail: 'The order has been successfully created!', life: 3000 });
                 },
                 onError: (errors) => {
-                    toast.add({ severity: 'error', summary: 'Error', detail: convertJsonToReadableText(errors), life: 3000 });
+                    toast.add({ severity: 'error', summary: 'Error', detail: convertJsonToReadableText(errors), life: 5000 });
                     console.log("error /orders - ", convertJsonToReadableText(errors));
                 }
             });
@@ -315,13 +319,14 @@ const formOrderSubmit = () => {
             </template>
             <template #end>
                 <div class="flex items-center gap-2">
-                    <Button v-if="!walletLoaded" @click="initTrxWallet()" size="small" outlined>
+                    <Button v-if="!connectedWallet" @click="initTrxWallet()" size="small" outlined>
                         <Image src="/images/tronlink_icon.png" alt="Image" width="20px" />
-                        <span class="px-3 font-semibold">Connect wallet</span>
+                        <span v-if="!walletLoading" class="px-3 font-semibold">Connect wallet</span>
+                        <ProgressSpinner v-else />
                     </Button>
                     <SplitButton v-else :model="buttonitems" @click="copyTrxWallet()" size="small">
                         <span class="pi pi-copy"></span>
-                        <span class="ml-2 flex items-center font-bold">{{ walletAddress }}</span>
+                        <span class="ml-2 flex items-center font-bold">{{ connectedWallet.wallet_address }}</span>
                     </SplitButton>
                 </div>
             </template>
@@ -387,9 +392,9 @@ const formOrderSubmit = () => {
                                     <InputGroupAddon>
                                         <i class="pi pi-wallet"></i>
                                     </InputGroupAddon>
-                                    <InputText type="text" v-model="formOrder.target_address" @input="tronAddressValidity" class="w-full" placeholder="TRX address" :invalid="formOrder.errors.target_address" />
+                                    <InputText type="text" v-model="formOrder.source_address" @input="tronAddressValidity" class="w-full" placeholder="TRX address" :invalid="formOrder.errors.source_address" />
                                 </InputGroup>
-                                <div class="text-red-500 text-xs">{{ formOrder.errors.target_address }}</div>
+                                <div class="text-red-500 text-xs">{{ formOrder.errors.source_address }}</div>
                             </div>
                         </div>
 
@@ -433,7 +438,7 @@ const formOrderSubmit = () => {
                             </div>
                         </div>
 
-                        <Button class="mt-4" type="submit" label="SELL" severity="danger" :disabled="formOrder.processing || isSubmitButtonDisabled" />
+                        <Button class="mt-4" type="submit" label="BUY" severity="success" :disabled="formOrder.processing || isSubmitButtonDisabled" />
                     </div>
                 </Fieldset>
                 </form>
@@ -527,7 +532,7 @@ const formOrderSubmit = () => {
         <div class="grid grid-cols-1 gap-3 content-center ">
             <div class="grid grid-cols-1 md:grid-cols-3">
                 <div class="font-bold ">Wallet name</div>
-                <div class="col-span-2">{{ walletName }}</div>
+                <div class="col-span-2">{{ connectedWallet.wallet_name }}</div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3">
                 <div class="font-bold">
@@ -535,21 +540,21 @@ const formOrderSubmit = () => {
                     <Button @click="copyTrxWallet()" class="py-[2px] inline-flex sm:hidden"
                         icon="pi pi-copy" text aria-label="copy wallet" />
                 </div>
-                <div class="col-span-2">{{ walletAddress }} <Button @click="copyTrxWallet()"
+                <div class="col-span-2">{{ connectedWallet.wallet_address }} <Button @click="copyTrxWallet()"
                         class="py-[2px] hidden sm:inline-flex" icon="pi pi-copy" text
                         aria-label="copy wallet" /></div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3">
                 <div class="font-bold">Balance</div>
-                <div class="col-span-2">{{ walletBalance }}</div>
+                <div class="col-span-2">{{ connectedWallet.wallet_balance }}</div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3">
                 <div class="font-bold">Energy</div>
-                <div class="col-span-2">{{ walletEnergy }}</div>
+                <div class="col-span-2">{{ connectedWallet.wallet_energy }}</div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3">
                 <div class="font-bold">Bandwidth</div>
-                <div class="col-span-2">{{ walletBandwidth }}</div>
+                <div class="col-span-2">{{ connectedWallet.wallet_bandwith }}</div>
             </div>
         </div>
 
@@ -566,10 +571,11 @@ const formOrderSubmit = () => {
                 </div>
                 <span class="font-bold text-2xl block mb-2 mt-4">{{ message.header }}</span>
                 <p class="mb-0">{{ message.message }}</p>
-                <div v-if="isWalletDisconnected" class="flex items-center mt-4">
-                    <Button v-if="!walletLoaded" @click="initTrxWallet()" outlined>
+                <div v-if="!connectedWallet" class="flex items-center mt-4">
+                    <Button v-if="!connectedWallet" @click="initTrxWallet()" outlined>
                         <Image src="/images/tronlink_icon.png" alt="Image" width="20px" />
-                        <span class="px-3 font-semibold">Connect wallet</span>
+                        <span v-if="!walletLoading" class="px-3 font-semibold">Connect wallet</span>
+                        <ProgressSpinner v-else />
                     </Button>
                     <Button label="Cancel" class="ml-4" severity="danger" outlined @click="rejectCallback"></Button>
                 </div>

@@ -4,13 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\OrderPostRequest;
 use App\Http\Services\GeneralService;
-use Illuminate\Http\Request;
-use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
-use Inertia\Inertia;
 use App\Models\Order;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -22,12 +17,17 @@ class OrderController extends Controller
 
     public function order(OrderPostRequest $request)
     {
-        $data = $request->safe()->all();
+        try {
+            $data = $request->safe()->all();
 
-        if (!$this->genService->isAddressCorrect($data['target_address'])) {
-            return back()->withErrors(['target_address' => 'Tron address is not valid'])->withInput();
+            if (!$this->genService->isAddressCorrect($data['source_address'])) {
+                return back()->withErrors(['source_address' => 'Tron address is not valid'])->withInput();
+            }
+
+            Order::create($data);
+        } catch (\Throwable $e) {
+            Log::error($e);
+            return back()->withErrors([$e->getMessage()])->withInput();
         }
-
-        Order::create($data);
     }
 }

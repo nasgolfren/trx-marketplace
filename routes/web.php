@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\WalletController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -17,9 +18,16 @@ use Inertia\Inertia;
 |
 */
 
-Route::get('/', [HomeController::class, 'index']);
+Route::get('/', [HomeController::class, 'show']);
 
-Route::group(['prefix'=>'orders'], function () {
+
+
+Route::group(['prefix' => 'wallet-info'], function () {
+    Route::post('/', [WalletController::class, 'save']);
+    Route::delete('/', [WalletController::class, 'logout']);
+});
+
+Route::group(['prefix' => 'orders'], function () {
     Route::post('/', [OrderController::class, 'order']);
 });
 
