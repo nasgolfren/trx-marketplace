@@ -22,6 +22,8 @@ import InputGroupAddon from 'primevue/inputgroupaddon';
 import ConfirmDialog from 'primevue/confirmdialog';
 import { useConfirm } from "primevue/useconfirm";
 import Checkbox from 'primevue/checkbox';
+import Card from 'primevue/card';
+import numeral from 'numeral';
 
 
 /**
@@ -57,14 +59,7 @@ const props = defineProps({
 
 const buttonitems = [
     {
-        label: 'Show details',
-        icon: 'pi pi-id-card',
-        command: () => {
-            showWalletDetails.value = true;
-        }
-    },
-    {
-        label: 'Disconnect',
+        label: 'Disconnect Wallet',
         icon: 'pi pi-power-off',
         command: () => {
             tronWallet.value = null;
@@ -133,18 +128,13 @@ async function __showTronInfo() {
     try {
         let localWalletObj = tronWallet.value;
 
-        let account_info = await localWalletObj.trx.getAccount();
-        let walletAddress = await localWalletObj.address.fromHex(account_info.address);
-        let walletName = await localWalletObj.defaultAddress.name;
-        let account_resource_info = await localWalletObj.trx.getAccountResources(account_info.address);
+        let account = await localWalletObj.trx.getAccount();
+        let walletAddress = await localWalletObj.address.fromHex(account.address);
 
         delete formOrder.errors.source_address;
 
         router.post('/wallet-info', {
-            'account': account_info,
-            'account_resource': account_resource_info,
             'wallet_address': walletAddress,
-            'wallet_name': walletName,
         },{
             preserveState: true,
             onSuccess: page => {
@@ -152,7 +142,11 @@ async function __showTronInfo() {
             },
             onError: errors => {
                 console.log('Error saving data to session:', errors);
-                toast.add({ severity: 'error', summary: 'Error', detail: 'Wallet cannot to connect', life: 5000 });
+                if (typeof errors == 'object') {
+                    toast.add({ severity: 'error', summary: 'Error', detail: errors[0], life: 5000 });
+                } else {
+                    toast.add({ severity: 'error', summary: 'Error', detail: 'Wallet was not connected!', life: 5000 });
+                }
             },
             onFinish: visit => {
                 walletLoading.value = false;
@@ -160,6 +154,7 @@ async function __showTronInfo() {
         });
 
     } catch (error) {
+        walletLoading.value = false;
         console.log('__showTronInfo error: ', error);
         toast.add({ severity: 'error', summary: 'Error', detail: error + ', Try to connect to your TronLink first', life: 5000 });
     }
@@ -172,7 +167,7 @@ async function __showTronInfo() {
  */
  async function copyTrxWallet() {
     try {
-        await navigator.clipboard.writeText(props.connectedWallet.wallet_address);
+        await navigator.clipboard.writeText(props.connectedWallet.address);
         toast.add({ severity: 'info', summary: 'Info', detail: 'Address was copied to clipboard', life: 3000 });
     } catch (error) {
         console.log('error: ', error);
@@ -253,6 +248,29 @@ const tronAddressValidity = () => {
         });
 };
 
+const allTrx = computed(() => {
+    let balance = !props.connectedWallet ? 0 : props.connectedWallet.wallet_balance;
+    let freeze = !props.connectedWallet ? 0 : props.connectedWallet.wallet_staked_trx;
+
+    return numeral(balance + freeze).format('0,0.00');
+});
+
+const delegatedEnergy = computed(() => {
+    let trx = !props.connectedWallet ? 0 : props.connectedWallet.wallet_staked_trx;
+    let cost = !props.connectedWallet ? 0 : props.connectedWallet.energyCost;
+    let energyRemaining  = !props.connectedWallet ? 0 : props.connectedWallet.bandwidth.energyRemaining;
+
+    return numeral(((trx * cost) - energyRemaining)).format('0,0.00');
+});
+
+const delegatedBandwith = computed(() => {
+    let bandwith = !props.connectedWallet ? 0 : props.connectedWallet.delegatedFrozenV2BalanceForBandwidth;
+    let netCost = !props.connectedWallet ? 0 : props.connectedWallet.netCost;
+    let netRemaining = !props.connectedWallet ? 0 : props.connectedWallet.bandwidth.netRemaining;
+
+    return numeral(((bandwith * netCost) - netRemaining)).format('0,0.00');
+});
+
 /**
  *
  * Form - order data
@@ -304,8 +322,8 @@ const formOrderSubmit = () => {
 <template>
     <Head title="Welcomeeeee" />
 
-    <div class="container mx-auto p-2 sm:p-0">
-        <Menubar class="my-8">
+    <div class="container mx-auto p-2 sm:p-0 mb-5">
+        <Menubar class="my-8 border-none bg-white">
             <template #start>
                 <svg width="35" height="40" viewBox="0 0 35 40" fill="none" xmlns="http://www.w3.org/2000/svg"
                     class="h-8">
@@ -319,18 +337,90 @@ const formOrderSubmit = () => {
             </template>
             <template #end>
                 <div class="flex items-center gap-2">
-                    <Button v-if="!connectedWallet" @click="initTrxWallet()" size="small" outlined>
-                        <Image src="/images/tronlink_icon.png" alt="Image" width="20px" />
+                    <Button v-if="!connectedWallet" @click="initTrxWallet()" size="small" outlined :loading="walletLoading" :disabled="walletLoading">
+                        <Image v-if="!walletLoading" src="/images/tronlink_icon.png" alt="Image" width="20px" />
                         <span v-if="!walletLoading" class="px-3 font-semibold">Connect wallet</span>
-                        <ProgressSpinner v-else />
+                        <span v-else class="pi pi-spin pi-cog" style="font-size: 1.5rem"></span>
                     </Button>
                     <SplitButton v-else :model="buttonitems" @click="copyTrxWallet()" size="small">
                         <span class="pi pi-copy"></span>
-                        <span class="ml-2 flex items-center font-bold">{{ connectedWallet.wallet_address }}</span>
+                        <span class="ml-2 flex items-center font-bold">{{ connectedWallet.address }}</span>
                     </SplitButton>
                 </div>
             </template>
         </Menubar>
+
+        <div class="grid grid-cols-3 gap-8 mb-5">
+            <div class="col-end-3">
+                <Card class="overview-card">
+                    <template #title>
+                        <p>
+                            <span class="pi pi-user mr-3"></span>Account
+                        </p>
+                        <span class="text-base font-thin text-gray-600 icon-container break-all">
+                            {{ !connectedWallet ? '-' : connectedWallet.address }}
+                            <Button v-if="connectedWallet" @click="copyTrxWallet()"
+                                class="py-[2px] hidden sm:inline-flex" icon="pi pi-copy" text
+                                aria-label="copy wallet" />
+                        </span>
+                    </template>
+                    <template #subtitle>
+                        <div class="grid gap-4 grid-cols-3">
+                            <div>
+                                <span class="text-xs text-gray-500">Balance (TRX)</span>
+                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : numeral(connectedWallet.wallet_balance).format('0,00') }}</p>
+                            </div>
+                            <div>
+                                <span class="text-xs text-gray-500">Staked (TRX)</span>
+                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : numeral(connectedWallet.wallet_staked_trx).format('0,0.00') }}</p>
+                            </div>
+                            <div>
+                                <span class="text-xs text-gray-500">All (TRX)</span>
+                                <p class="text-xl font-semibold">{{ allTrx }}</p>
+                            </div>
+                        </div>
+                    </template>
+                </Card>
+            </div>
+            <div>
+                <Card class="overview-card">
+                    <template #title>
+                        <div class="grid grid-cols-2">
+                            <div>
+                                <p>
+                                    <span class="pi pi-bolt mr-3 text-blue-600 font-semibold"></span>Energy
+                                </p>
+                                <span class="text-base font-thin text-gray-600 icon-container">
+                                    {{ !connectedWallet ? 0 : numeral(connectedWallet.bandwidth.energyRemaining).format('0,0') }}
+                                    <span class="text-slate-400">&nbsp;/&nbsp;{{ !connectedWallet ? 0 : numeral(connectedWallet.bandwidth.energyLimit).format('0,0') }}</span>
+                                </span>
+                            </div>
+                            <div>
+                                <p class="icon-container">
+                                    <span class="material-symbols-outlined mr-3 text-emerald-600 font-bold">avg_pace</span>Bandwidth
+                                </p>
+                                <span class="text-base font-thin text-gray-600 icon-container">
+                                    {{ !connectedWallet ? 0 : numeral((connectedWallet.bandwidth.freeNetRemaining + connectedWallet.bandwidth.netRemaining)).format('0,0') }}
+                                    <span class="text-slate-400">&nbsp;/&nbsp;{{ !connectedWallet ? 0 : numeral((connectedWallet.bandwidth.freeNetLimit + connectedWallet.bandwidth.netLimit)).format('0,0') }}</span>
+                                </span>
+                            </div>
+                        </div>
+                    </template>
+                    <template #subtitle>
+                        <div class="grid gap-4 grid-cols-2">
+                            <div>
+                                <span class="text-xs text-gray-500">Delegated Energy</span>
+                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : delegatedEnergy }}</p>
+                            </div>
+                            <div>
+                                <span class="text-xs text-gray-500">Delegated Bandwidth</span>
+                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : delegatedBandwith }}</p>
+                            </div>
+                        </div>
+                    </template>
+                </Card>
+            </div>
+        </div>
 
         <div class="grid gap-4 grid-cols-3 grid-rows-1">
             <div class="col-span-full lg:col-span-1" v-focustrap>
@@ -427,7 +517,7 @@ const formOrderSubmit = () => {
                                     {{ formOrder.amount }}<span class="pi pi-bolt"></span>
                                 </div>
                                 <div v-else class="text-emerald-600 font-semibold icon-container">
-                                    {{ formOrder.amount }}<span class="material-symbols-outlined">avg_pace</span>
+                                    {{ formOrder.amount }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
                                 </div>
                             </div>
                             <div class="flex justify-between mt-2 font-semibold">
@@ -477,7 +567,7 @@ const formOrderSubmit = () => {
                                     {{ data.amount }}<span class="pi pi-bolt"></span>
                                 </div>
                                 <div v-else class="text-emerald-600 font-semibold icon-container">
-                                    {{ data.amount }}<span class="material-symbols-outlined">avg_pace</span>
+                                    {{ data.amount }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
                                 </div>
 
                                 <div class="text-xs">
@@ -529,7 +619,7 @@ const formOrderSubmit = () => {
             </div>
         </template>
 
-        <div class="grid grid-cols-1 gap-3 content-center ">
+        <div class="grid grid-cols-1 gap-3 content-center">
             <div class="grid grid-cols-1 md:grid-cols-3">
                 <div class="font-bold ">Wallet name</div>
                 <div class="col-span-2">{{ connectedWallet.wallet_name }}</div>
@@ -540,9 +630,12 @@ const formOrderSubmit = () => {
                     <Button @click="copyTrxWallet()" class="py-[2px] inline-flex sm:hidden"
                         icon="pi pi-copy" text aria-label="copy wallet" />
                 </div>
-                <div class="col-span-2">{{ connectedWallet.wallet_address }} <Button @click="copyTrxWallet()"
+                <div class="col-span-2">
+                    {{ connectedWallet.address }}
+                    <Button @click="copyTrxWallet()"
                         class="py-[2px] hidden sm:inline-flex" icon="pi pi-copy" text
-                        aria-label="copy wallet" /></div>
+                        aria-label="copy wallet" />
+                </div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-3">
                 <div class="font-bold">Balance</div>
@@ -572,10 +665,9 @@ const formOrderSubmit = () => {
                 <span class="font-bold text-2xl block mb-2 mt-4">{{ message.header }}</span>
                 <p class="mb-0">{{ message.message }}</p>
                 <div v-if="!connectedWallet" class="flex items-center mt-4">
-                    <Button v-if="!connectedWallet" @click="initTrxWallet()" outlined>
+                    <Button v-if="!connectedWallet" @click="initTrxWallet()" outlined :loading="walletLoading" :disabled="walletLoading">
                         <Image src="/images/tronlink_icon.png" alt="Image" width="20px" />
-                        <span v-if="!walletLoading" class="px-3 font-semibold">Connect wallet</span>
-                        <ProgressSpinner v-else />
+                        <span class="px-3 font-semibold">Connect wallet</span>
                     </Button>
                     <Button label="Cancel" class="ml-4" severity="danger" outlined @click="rejectCallback"></Button>
                 </div>

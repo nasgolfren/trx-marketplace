@@ -15,10 +15,7 @@ class WalletInfoPostRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'account' => 'required|array',
-            'account_resource' => 'required|array',
             'wallet_address' => 'required|string',
-            'wallet_name' => 'required|string',
         ];
     }
 }

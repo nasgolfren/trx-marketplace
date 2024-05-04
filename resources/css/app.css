@@ -37,16 +37,21 @@
     align-items: center; /* Align items vertically */
 }
 
-.material-symbols-outlined {
-    font-size: 20px !important;
-}
-
-.icon-container .material-symbols-outlined {
+.icon-container .material-icon-small {
     padding-left: 2px;
+    font-size: 20px !important;
 }
 
 @media (max-width: 640px) { /* Adjust breakpoint as per your requirements */
     .hide-on-mobile {
         display: none !important;
     }
+}
+
+.mb-5 {
+    margin-bottom: 2rem;
+}
+
+.overview-card [data-pc-section="content"] {
+    display: none;
 }
