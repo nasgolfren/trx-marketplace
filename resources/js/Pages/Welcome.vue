@@ -256,19 +256,19 @@ const allTrx = computed(() => {
 });
 
 const delegatedEnergy = computed(() => {
-    let trx = !props.connectedWallet ? 0 : props.connectedWallet.wallet_staked_trx;
+    let trx = !props.connectedWallet ? 0 : props.connectedWallet.wallet_balance;
     let cost = !props.connectedWallet ? 0 : props.connectedWallet.energyCost;
-    let energyRemaining  = !props.connectedWallet ? 0 : props.connectedWallet.bandwidth.energyRemaining;
+    //let energyRemaining  = !props.connectedWallet ? 0 : props.connectedWallet.bandwidth.energyRemaining;
 
-    return numeral(((trx * cost) - energyRemaining)).format('0,0');
+    return numeral(trx * cost).format('0,0');
 });
 
 const delegatedBandwith = computed(() => {
     let bandwith = !props.connectedWallet ? 0 : props.connectedWallet.delegatedFrozenV2BalanceForBandwidth;
     let netCost = !props.connectedWallet ? 0 : props.connectedWallet.netCost;
-    let netRemaining = !props.connectedWallet ? 0 : props.connectedWallet.bandwidth.netRemaining;
+    //let netRemaining = !props.connectedWallet ? 0 : props.connectedWallet.bandwidth.netRemaining;
 
-    return numeral(((bandwith * netCost) - netRemaining)).format('0,0');
+    return numeral(bandwith * netCost).format('0,0');
 });
 
 /**
