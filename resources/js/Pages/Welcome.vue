@@ -38,6 +38,7 @@ const toast = useToast();
 const showWalletDetails = ref(false);
 const walletLoading = ref(false);
 const tronWallet = ref();
+let refreshWalletInterval;
 
 const formOrder = useForm({
     amount: 0,
@@ -65,6 +66,8 @@ const buttonitems = [
             tronWallet.value = null;
             delete formOrder.errors.source_address;
 
+            clearInterval(refreshWalletInterval);
+
             router.delete('/wallet-info', {
                 preserveState: true,
                 onSuccess: page => {
@@ -90,15 +93,27 @@ onBeforeMount(() => {
     formOrder.price = formOrder.selectedDurationSource.price;
 })
 
+onMounted(() => {
+    if (props.connectedWallet) {
+        refreshWallet();
+    }
+})
 
-const initTrxWallet = () => {
+function refreshWallet() {
+    refreshWalletInterval = setInterval(function () {
+        console.log('interval!');
+        __showTronInfo(false);
+    }, 5000);
+}
+
+const initTrxWallet = (initProcess = true) => {
     try {
         walletLoading.value = true;
 
         setTimeout(async function () {
             __initWallet()
                 .then(function(response) {
-                    __showTronInfo()
+                    __showTronInfo(initProcess);
                 })
                 .catch(function (error) {
                     console.log('__initWallet error:', error);
@@ -116,6 +131,7 @@ async function __initWallet() {
         tronWeb = tronLink.tronWeb;
     } else {
         const res = await tronLink.request({ method: 'tron_requestAccounts' });
+
         if (res.code === 200) {
             tronWeb = tronLink.tronWeb;
         }
@@ -124,12 +140,16 @@ async function __initWallet() {
     tronWallet.value = tronWeb;
 }
 
-async function __showTronInfo() {
+async function __showTronInfo(initProcess = true) {
     try {
         let localWalletObj = tronWallet.value;
 
-        let account = await localWalletObj.trx.getAccount();
-        let walletAddress = await localWalletObj.address.fromHex(account.address);
+        if (localWalletObj == undefined) {
+            initTrxWallet(false);
+            return;
+        }
+
+        let walletAddress = localWalletObj.defaultAddress.base58;
 
         delete formOrder.errors.source_address;
 
@@ -137,19 +157,30 @@ async function __showTronInfo() {
             'wallet_address': walletAddress,
         },{
             preserveState: true,
+            preserveScroll: true,
             onSuccess: page => {
-                toast.add({ severity: 'info', summary: 'Info', detail: 'Wallet successfully connected', life: 3000 });
+                if (initProcess) {
+                    formOrder.source_address = props.connectedWallet.address;
+                    toast.add({ severity: 'info', summary: 'Info', detail: 'Wallet successfully connected', life: 3000 });
+                }
             },
             onError: errors => {
                 console.log('Error saving data to session:', errors);
-                if (typeof errors == 'object') {
-                    toast.add({ severity: 'error', summary: 'Error', detail: errors[0], life: 5000 });
-                } else {
-                    toast.add({ severity: 'error', summary: 'Error', detail: 'Wallet was not connected!', life: 5000 });
+
+                if (initProcess) {
+                    if (typeof errors == 'object') {
+                        toast.add({ severity: 'error', summary: 'Error', detail: errors[0], life: 5000 });
+                    } else {
+                        toast.add({ severity: 'error', summary: 'Error', detail: 'Wallet was not connected!', life: 5000 });
+                    }
                 }
             },
             onFinish: visit => {
                 walletLoading.value = false;
+
+                if (refreshWalletInterval == undefined) {
+                    refreshWallet();
+                }
             },
         });
 
