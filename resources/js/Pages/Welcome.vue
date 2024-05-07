@@ -260,7 +260,7 @@ const delegatedEnergy = computed(() => {
     let cost = !props.connectedWallet ? 0 : props.connectedWallet.energyCost;
     let energyRemaining  = !props.connectedWallet ? 0 : props.connectedWallet.bandwidth.energyRemaining;
 
-    return numeral(((trx * cost) - energyRemaining)).format('0,0.00');
+    return numeral(((trx * cost) - energyRemaining)).format('0,0');
 });
 
 const delegatedBandwith = computed(() => {
@@ -268,7 +268,7 @@ const delegatedBandwith = computed(() => {
     let netCost = !props.connectedWallet ? 0 : props.connectedWallet.netCost;
     let netRemaining = !props.connectedWallet ? 0 : props.connectedWallet.bandwidth.netRemaining;
 
-    return numeral(((bandwith * netCost) - netRemaining)).format('0,0.00');
+    return numeral(((bandwith * netCost) - netRemaining)).format('0,0');
 });
 
 /**
@@ -368,11 +368,11 @@ const formOrderSubmit = () => {
                         <div class="grid gap-4 grid-cols-3">
                             <div>
                                 <span class="text-xs text-gray-500">Balance (TRX)</span>
-                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : numeral(connectedWallet.wallet_balance).format('0,00') }}</p>
+                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : numeral(connectedWallet.wallet_balance).format('0,00.00') }}</p>
                             </div>
                             <div>
                                 <span class="text-xs text-gray-500">Staked (TRX)</span>
-                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : numeral(connectedWallet.wallet_staked_trx).format('0,0.00') }}</p>
+                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : numeral(connectedWallet.wallet_staked_trx).format('0,0') }}</p>
                             </div>
                             <div>
                                 <span class="text-xs text-gray-500">All (TRX)</span>
