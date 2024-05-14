@@ -15,10 +15,10 @@ import Tooltip from 'primevue/tooltip';
 import FocusTrap from 'primevue/focustrap';
 import ConfirmationService from 'primevue/confirmationservice';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
+//const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 createInertiaApp({
-    title: (title) => `${title} - ${appName}`,
+    title: (title) => `${title} - Tron Energy Market`,
     resolve: (name) => resolvePageComponent(`./Pages/${name}.vue`, import.meta.glob('./Pages/**/*.vue')),
     setup({ el, App, props, plugin }) {
         return createApp({ render: () => h(App, props) })
@@ -35,7 +35,5 @@ createInertiaApp({
             .directive('focustrap', FocusTrap)
             .mount(el);
     },
-    progress: {
-        color: '#4B5563',
-    },
+    progress: false,
 });

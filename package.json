@@ -22,6 +22,7 @@
         "material-icons": "^1.13.12",
         "material-symbols": "^0.17.1",
         "moment": "^2.30.1",
+        "nprogress": "^0.2.0",
         "numeral": "^2.0.6",
         "primeicons": "^6.0.1",
         "primevue": "^3.49.1",

@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import { reactive, ref, computed, onMounted, onBeforeMount } from 'vue';
+
 import Menubar from 'primevue/menubar';
 import Dialog from 'primevue/dialog';
 import Button from 'primevue/button';
@@ -12,10 +13,8 @@ import InputNumber from 'primevue/inputnumber';
 import Dropdown from 'primevue/dropdown';
 import InputText from 'primevue/inputtext';
 import Image from 'primevue/image';
-import { convertJsonToReadableText } from '@/functions';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
-import moment from 'moment';
 import ProgressBar from 'primevue/progressbar';
 import InputGroup from 'primevue/inputgroup';
 import InputGroupAddon from 'primevue/inputgroupaddon';
@@ -23,7 +22,11 @@ import ConfirmDialog from 'primevue/confirmdialog';
 import { useConfirm } from "primevue/useconfirm";
 import Checkbox from 'primevue/checkbox';
 import Card from 'primevue/card';
+import NProgress from 'nprogress';
+
+import moment from 'moment';
 import numeral from 'numeral';
+import { convertJsonToReadableText } from '@/functions';
 
 
 /**
@@ -38,7 +41,7 @@ const toast = useToast();
 const showWalletDetails = ref(false);
 const walletLoading = ref(false);
 const tronWallet = ref();
-let refreshWalletInterval;
+let refreshWalletInterval = null;
 
 const formOrder = useForm({
     amount: 0,
@@ -67,6 +70,9 @@ const buttonitems = [
             delete formOrder.errors.source_address;
 
             clearInterval(refreshWalletInterval);
+            refreshWalletInterval = null;
+
+            NProgress.start();
 
             router.delete('/wallet-info', {
                 preserveState: true,
@@ -75,6 +81,9 @@ const buttonitems = [
                 },
                 onError: errors => {
                     toast.add({ severity: 'error', summary: 'Error', detail: error, life: 5000 });
+                },
+                onFinish: visit => {
+                    NProgress.done();
                 },
             });
         }
@@ -96,30 +105,26 @@ onBeforeMount(() => {
 onMounted(() => {
     if (props.connectedWallet) {
         refreshWallet();
+        formOrder.source_address = props.connectedWallet.address;
     }
 })
 
-function refreshWallet() {
-    refreshWalletInterval = setInterval(function () {
-        console.log('interval!');
-        __showTronInfo(false);
-    }, 5000);
-}
 
 const initTrxWallet = (initProcess = true) => {
     try {
         walletLoading.value = true;
 
-        setTimeout(async function () {
+        let obj = setTimeout(async function () {
             __initWallet()
-                .then(function(response) {
-                    __showTronInfo(initProcess);
+                .then(async function(response) {
+                    await __showTronInfo(initProcess);
+                    clearInterval(obj);
                 })
                 .catch(function (error) {
                     console.log('__initWallet error:', error);
                     toast.add({ severity: 'error', summary: 'Error', detail: error, life: 5000 });
                 });
-        }, 500);
+        }, 50);
     } catch (error) {
         walletLoading.value = false;
         console.log('initTrxWallet - try: ', error);
@@ -151,7 +156,15 @@ async function __showTronInfo(initProcess = true) {
 
         let walletAddress = localWalletObj.defaultAddress.base58;
 
+        if (!walletAddress) {
+            throw "Wallet is not connected";
+        }
+
         delete formOrder.errors.source_address;
+
+        if (initProcess) {
+            NProgress.start();
+        }
 
         router.post('/wallet-info', {
             'wallet_address': walletAddress,
@@ -162,6 +175,10 @@ async function __showTronInfo(initProcess = true) {
                 if (initProcess) {
                     formOrder.source_address = props.connectedWallet.address;
                     toast.add({ severity: 'info', summary: 'Info', detail: 'Wallet successfully connected', life: 3000 });
+                }
+
+                if (!refreshWalletInterval) {
+                    refreshWallet();
                 }
             },
             onError: errors => {
@@ -178,8 +195,8 @@ async function __showTronInfo(initProcess = true) {
             onFinish: visit => {
                 walletLoading.value = false;
 
-                if (refreshWalletInterval == undefined) {
-                    refreshWallet();
+                if (initProcess) {
+                    NProgress.done();
                 }
             },
         });
@@ -189,6 +206,18 @@ async function __showTronInfo(initProcess = true) {
         console.log('__showTronInfo error: ', error);
         toast.add({ severity: 'error', summary: 'Error', detail: error + ', Try to connect to your TronLink first', life: 5000 });
     }
+}
+
+const refreshWallet = () => {
+    refreshWalletInterval = setInterval(async function () {
+        console.log('interval!');
+        console.log('props.connectedWallet', props.connectedWallet);
+        console.log('refreshWalletInterval', refreshWalletInterval);
+
+        if (props.connectedWallet) {
+            await __showTronInfo(false);
+        }
+    }, 15000);
 }
 
 /**
@@ -287,17 +316,15 @@ const allTrx = computed(() => {
 });
 
 const delegatedEnergy = computed(() => {
-    let trx = !props.connectedWallet ? 0 : props.connectedWallet.wallet_balance;
+    let trx = !props.connectedWallet ? 0 : props.connectedWallet.delegatedFrozenV2BalanceForEnergy;
     let cost = !props.connectedWallet ? 0 : props.connectedWallet.energyCost;
-    //let energyRemaining  = !props.connectedWallet ? 0 : props.connectedWallet.bandwidth.energyRemaining;
 
-    return numeral(trx * cost).format('0,0');
+    return numeral((trx * cost) / 1000000).format('0,0');
 });
 
 const delegatedBandwith = computed(() => {
     let bandwith = !props.connectedWallet ? 0 : props.connectedWallet.delegatedFrozenV2BalanceForBandwidth;
     let netCost = !props.connectedWallet ? 0 : props.connectedWallet.netCost;
-    //let netRemaining = !props.connectedWallet ? 0 : props.connectedWallet.bandwidth.netRemaining;
 
     return numeral(bandwith * netCost).format('0,0');
 });
@@ -325,33 +352,41 @@ const formOrderSubmit = () => {
         header: 'Create the order',
         message: 'Please confirm to proceed the order',
         accept: () => {
-            formOrder.transform((data) => ({
-                ...data,
-                'resource': data.selectedResource.code,
-                'hours': data.selectedDurationSource.code,
-            }))
-            .post('/orders', {
-                errorBag: 'submitOrder',
-                preserveState: true,
-                preserveScroll: true,
-                onSuccess: (response) => {
-                    toast.add({ severity: 'success', summary: 'Success', detail: 'The order has been successfully created!', life: 3000 });
-                },
-                onError: (errors) => {
-                    toast.add({ severity: 'error', summary: 'Error', detail: convertJsonToReadableText(errors), life: 5000 });
-                    console.log("error /orders - ", convertJsonToReadableText(errors));
-                }
-            });
+            try {
+                formOrder.transform((data) => ({
+                    ...data,
+                    'resource': data.selectedResource.code,
+                    'hours': data.selectedDurationSource.code,
+                }))
+                .post('/orders', {
+                    errorBag: 'submitOrder',
+                    preserveState: true,
+                    preserveScroll: true,
+                    onSuccess: (response) => {
+                        toast.add({ severity: 'success', summary: 'Success', detail: 'The order has been successfully created!', life: 3000 });
+                    },
+                    onError: (errors) => {
+                        toast.add({ severity: 'error', summary: 'Error', detail: convertJsonToReadableText(errors), life: 5000 });
+                        console.log("error /orders - ", convertJsonToReadableText(errors));
+                    }
+                });
+            } catch (error) {
+                console.log('formOrderSubmit() - error: ', error);
+                toast.add({ severity: 'error', summary: 'Error', detail: 'Order process interupted ' + error, life: 5000 });
+            }
         },
         reject: () => {
-            //toast.add({ severity: 'error', summary: 'Rejected', detail: 'You cancelled the order', life: 3000 });
-        }
+            toast.add({ severity: 'info', summary: 'Cancelled', detail: 'You cancelled the order', life: 3000 });
+        },
+        onHide: () => {
+            toast.add({ severity: 'info', summary: 'Cancelled', detail: 'You cancelled the order', life: 3000 });
+        },
     });
 };
 </script>
 
 <template>
-    <Head title="Welcomeeeee" />
+    <Head title="Adainvest" />
 
     <div class="container mx-auto p-2 sm:p-0 mb-5">
         <Menubar class="my-8 border-none bg-white">
@@ -375,14 +410,14 @@ const formOrderSubmit = () => {
                     </Button>
                     <SplitButton v-else :model="buttonitems" @click="copyTrxWallet()" size="small">
                         <span class="pi pi-copy"></span>
-                        <span class="ml-2 flex items-center font-bold">{{ connectedWallet.address }}</span>
+                        <span class="ml-2 flex items-center font-bold break-all">{{ connectedWallet.address }}</span>
                     </SplitButton>
                 </div>
             </template>
         </Menubar>
 
-        <div class="grid grid-cols-3 gap-8 mb-5">
-            <div class="col-end-3">
+        <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-8 mb-5">
+            <div class="xl:col-end-3">
                 <Card class="overview-card">
                     <template #title>
                         <p>
@@ -565,7 +600,7 @@ const formOrderSubmit = () => {
                 </form>
             </div>
 
-            <div class="col-span-full lg:col-span-2">
+            <div class="col-span-full lg:col-span-2 order-book">
                 <Fieldset>
                     <template #legend>
                         <div class="flex items-center gap-2 px-2">
@@ -695,15 +730,109 @@ const formOrderSubmit = () => {
                 </div>
                 <span class="font-bold text-2xl block mb-2 mt-4">{{ message.header }}</span>
                 <p class="mb-0">{{ message.message }}</p>
+
+                <div class="my-4">
+
+                    <div class="flex flex-col">
+                        <div class="w-full">
+                            <label class="text-xs font-medium text-gray-900">
+                                Amount <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The amount expected in energy or bandwidth'" placeholder="Top"></span>
+                            </label>
+                            <div class="mt-1">
+                                {{ formOrder.amount }}
+                            </div>
+                        </div>
+
+                        <div class="w-full mt-3">
+                            <label class="block text-xs font-medium text-gray-900">
+                                Resource <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The resource type for the order'" placeholder="Top"></span>
+                            </label>
+                            <div class="mt-1">
+                                {{ formOrder.selectedResource.name }}
+                            </div>
+                        </div>
+
+                        <div class="w-full mt-3">
+                            <label class="block text-xs font-medium text-gray-900">
+                                Duration <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The duration of the rented resource in days'" placeholder="Top"></span>
+                            </label>
+                            <div class="mt-1">
+                                {{ formOrder.selectedDurationSource.name }}
+                            </div>
+                        </div>
+
+                        <div class="w-full mt-3">
+                            <label class="block text-xs font-medium text-gray-900">
+                                Price <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The price/day in SUN for the expected resource'" placeholder="Top"></span>
+                            </label>
+                            <div class="mt-1">
+                                {{  formOrder.price  }}
+                            </div>
+                        </div>
+
+                        <div class="w-full mt-3">
+                            <label class="block text-xs font-medium text-gray-900">
+                                Target TRX Address <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The target address of the energy / bandwidth obtained. It cannot be a contract address or any other invalid address'" placeholder="Top"></span>
+                            </label>
+                            <div class="mt-1 break-all">
+                                {{ formOrder.source_address }}
+                            </div>
+                        </div>
+
+                        <div class="w-full mt-4">
+                            <label class="block text-xs font-medium text-gray-900">
+                                Options
+                            </label>
+                            <div class="mt-1">
+                                <div>
+                                    <Checkbox v-model="formOrder.partial_fill" inputId="partial_fill" :binary="true" disabled />
+                                    <label for="partial_fill" class="ml-2">
+                                        Allow Partial Fill
+                                        <span class="pi pi-question-circle text-primary-500 text-sm pl-1" v-tooltip.top="'If checked it will allow the order to be filled partially. If unchecked the order won\'t be filled unless there is 1 address which can complete the order in 1 transaction.'" placeholder="Top"></span>
+                                    </label>
+                                </div>
+                                <div class="mt-1">
+                                    <Checkbox v-model="formOrder.multisignature" inputId="multisignature" :binary="true" disabled />
+                                    <label for="multisignature" class="ml-2">
+                                        Multisignature
+                                        <span class="pi pi-question-circle text-primary-500 text-sm pl-1" v-tooltip.top="'If checked a multisignature popup appear to create the multisignature transaction. This works for any kind of multisignature address.'" placeholder="Top"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <div>
+                            <div class="flex justify-between">
+                                <div>{{ formOrder.selectedResource.name }}</div>
+                                <div v-if="formOrder.selectedResource.code == 'energy'" class="text-blue-600 font-semibold">
+                                    {{ formOrder.amount }}<span class="pi pi-bolt"></span>
+                                </div>
+                                <div v-else class="text-emerald-600 font-semibold icon-container">
+                                    {{ formOrder.amount }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between mt-2 font-semibold">
+                                <div>
+                                    Total <span class="pi pi-question-circle text-primary-500 text-sm" v-tooltip.top="'Total = amount * price * duration'" placeholder="Top"></span>
+                                </div>
+                                <div>{{ finalPrice }} TRX</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div v-if="!connectedWallet" class="flex items-center mt-4">
                     <Button v-if="!connectedWallet" @click="initTrxWallet()" outlined :loading="walletLoading" :disabled="walletLoading">
-                        <Image src="/images/tronlink_icon.png" alt="Image" width="20px" />
-                        <span class="px-3 font-semibold">Connect wallet</span>
+                        <Image v-if="!walletLoading" src="/images/tronlink_icon.png" alt="Image" width="20px" />
+                        <span v-if="!walletLoading" class="px-3 font-semibold">Connect wallet</span>
+                        <span v-else class="pi pi-spin pi-cog" style="font-size: 1.5rem"></span>
                     </Button>
                     <Button label="Cancel" class="ml-4" severity="danger" outlined @click="rejectCallback"></Button>
                 </div>
                 <div v-else class="flex items-center gap-2 mt-4">
-                    <Button label="Confirm" @click="acceptCallback"></Button>
+                    <Button label="Confirm Order" @click="acceptCallback"></Button>
                     <Button label="Cancel" severity="danger" outlined @click="rejectCallback"></Button>
                 </div>
             </div>
