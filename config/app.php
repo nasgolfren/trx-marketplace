@@ -277,5 +277,7 @@ return [
         ['name' => 'Bandwidth', 'code' => 'bandwidth',],
     ],
 
-    'target_address' => 'TFN27Ke45MWyR2gouj5mHXxzeXz9DeAHd6',
+    'targetAddress' => 'TYPaDViYwW6LGYkb3Ca5Hq56NCRAgpnEKb',
+    'tronscanTransaction' => 'https://tronscan.org/#/transaction/',
+    'tronscanAdress' => 'https://tronscan.org/#/address/',
 ];

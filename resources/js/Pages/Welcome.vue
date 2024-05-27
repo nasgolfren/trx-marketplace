@@ -38,7 +38,8 @@ const toast = useToast();
 /**
  * App - controlls
  */
-const showWalletDetails = ref(false);
+const orderDetails = ref(null);
+const showOrderDetailsModal = ref(false);
 const walletLoading = ref(false);
 const tronWallet = ref();
 let refreshWalletInterval = null;
@@ -59,6 +60,9 @@ const props = defineProps({
     resources: Array,
     formConfig: Object,
     connectedWallet: Object,
+    targetAddress: String,
+    tronscanTransaction: String,
+    tronscanAdress: String,
 });
 
 const buttonitems = [
@@ -100,30 +104,112 @@ onBeforeMount(() => {
     formOrder.selectedResource = props.resources.find((resource) => resource.code == 'energy');
     formOrder.selectedDurationSource = props.formConfig.energy.durations.find((duration) => duration.code == 72);
     formOrder.price = formOrder.selectedDurationSource.price;
+
+    clearInterval(refreshWalletInterval);
+    refreshWalletInterval = null;
 })
 
-onMounted(() => {
+onMounted(async () => {
     if (props.connectedWallet) {
-        refreshWallet();
+        await initTrxWallet();
+
         formOrder.source_address = props.connectedWallet.address;
     }
+
+    // Tronlink events
+    window.addEventListener('message', async function (e) {
+        if (e.data.message && e.data.message.action == "tabReply") {
+            console.log("tabReply event", e.data.message)
+
+            if (e.data.message.data.data.node && e.data.message.data.data.node.chain == '_'){
+                console.log("tronLink currently selects the main chain 1")
+            }else{
+                console.log("tronLink currently selects the side chain 1 - else")
+            }
+        }
+
+        if (e.data.message && e.data.message.action == "setAccount") {
+            console.log("setAccount event", e.data.message)
+            console.log("current address:", e.data.message.data.address)
+
+            if (props.connectedWallet) {
+                await __showTronInfo(true, e.data.message.data.address);
+            }
+        }
+
+        if (e.data.message && e.data.message.action == "setNode") {
+            console.log("setNode event", e.data.message)
+            if (e.data.message.data.node.chain == '_'){
+                console.log("tronLink currently selects the main chain 2")
+            }else{
+                console.log("tronLink currently selects the side chain 2")
+            }
+
+            // Tronlink chrome v3.22.1 & Tronlink APP v4.3.4 started to support
+            if (e.data.message && e.data.message.action == "connect") {
+                console.log("connect event", e.data.message.isTronLink)
+            }
+
+            // Tronlink chrome v3.22.1 & Tronlink APP v4.3.4 started to support
+            if (e.data.message && e.data.message.action == "disconnect") {
+                console.log("disconnect event", e.data.message.isTronLink)
+            }
+
+            // Tronlink chrome v3.22.0 & Tronlink APP v4.3.4 started to support
+            if (e.data.message && e.data.message.action == "accountsChanged") {
+                console.log("accountsChanged event", e.data.message)
+                console.log("current address:", e.data.message.data.address)
+            }
+
+            // Tronlink chrome v3.22.0 & Tronlink APP v4.3.4 started to support
+            if (e.data.message && e.data.message.action == "connectWeb") {
+                console.log("connectWeb event", e.data.message)
+                console.log("current address:", e.data.message.data.address)
+            }
+
+            // Tronlink chrome v3.22.0 & Tronlink APP v4.3.4 started to support
+            if (e.data.message && e.data.message.action == "accountsChanged") {
+                console.log("accountsChanged event", e.data.message)
+            }
+
+            // Tronlink chrome v3.22.0 & Tronlink APP v4.3.4 started to support
+            if (e.data.message && e.data.message.action == "acceptWeb") {
+                console.log("acceptWeb event", e.data.message)
+            }
+            // Tronlink chrome v3.22.0 & Tronlink APP v4.3.4 started to support
+            if (e.data.message && e.data.message.action == "disconnectWeb") {
+                console.log("disconnectWeb event", e.data.message)
+            }
+
+            // Tronlink chrome v3.22.0 & Tronlink APP v4.3.4 started to support
+            if (e.data.message && e.data.message.action == "rejectWeb") {
+                console.log("rejectWeb event", e.data.message)
+            }
+        }
+    });
 })
 
 
-const initTrxWallet = (initProcess = true) => {
+const initTrxWallet = async (initProcess = true) => {
     try {
         walletLoading.value = true;
 
         let obj = setTimeout(async function () {
-            __initWallet()
-                .then(async function(response) {
-                    await __showTronInfo(initProcess);
-                    clearInterval(obj);
-                })
-                .catch(function (error) {
-                    console.log('__initWallet error:', error);
-                    toast.add({ severity: 'error', summary: 'Error', detail: error, life: 5000 });
-                });
+            if (window.tronLink.ready) {
+                tronWeb = tronLink.tronWeb;
+            } else {
+                const res = await tronLink.request({ method: 'tron_requestAccounts' });
+
+                if (res.code === 200) {
+                    tronWeb = tronLink.tronWeb;
+                }
+            }
+
+            tronWallet.value = tronWeb;
+
+            await __showTronInfo(initProcess);
+
+            clearInterval(obj);
         }, 50);
     } catch (error) {
         walletLoading.value = false;
@@ -131,21 +217,7 @@ const initTrxWallet = (initProcess = true) => {
     }
 }
 
-async function __initWallet() {
-    if (window.tronLink.ready) {
-        tronWeb = tronLink.tronWeb;
-    } else {
-        const res = await tronLink.request({ method: 'tron_requestAccounts' });
-
-        if (res.code === 200) {
-            tronWeb = tronLink.tronWeb;
-        }
-    }
-
-    tronWallet.value = tronWeb;
-}
-
-async function __showTronInfo(initProcess = true) {
+async function __showTronInfo(initProcess = true, changedWallet = null) {
     try {
         let localWalletObj = tronWallet.value;
 
@@ -154,7 +226,7 @@ async function __showTronInfo(initProcess = true) {
             return;
         }
 
-        let walletAddress = localWalletObj.defaultAddress.base58;
+        let walletAddress = changedWallet != null ? changedWallet : localWalletObj.defaultAddress.base58;
 
         if (!walletAddress) {
             throw "Wallet is not connected";
@@ -177,9 +249,7 @@ async function __showTronInfo(initProcess = true) {
                     toast.add({ severity: 'info', summary: 'Info', detail: 'Wallet successfully connected', life: 3000 });
                 }
 
-                if (!refreshWalletInterval) {
-                    refreshWallet();
-                }
+                refreshWallet();
             },
             onError: errors => {
                 console.log('Error saving data to session:', errors);
@@ -208,41 +278,20 @@ async function __showTronInfo(initProcess = true) {
     }
 }
 
-const refreshWallet = () => {
-    refreshWalletInterval = setInterval(async function () {
-        console.log('interval!');
-        console.log('props.connectedWallet', props.connectedWallet);
-        console.log('refreshWalletInterval', refreshWalletInterval);
+const refreshWallet = async () => {
+    if (!refreshWalletInterval) {
+        refreshWalletInterval = setInterval(async function () {
+            console.log('interval!');
+            console.log('props.connectedWallet', props.connectedWallet);
+            console.log('refreshWalletInterval', refreshWalletInterval);
 
-        if (props.connectedWallet) {
-            await __showTronInfo(false);
-        }
-    }, 15000);
-}
-
-/**
- *
- * Utility functions
- *
- */
- async function copyTrxWallet() {
-    try {
-        await navigator.clipboard.writeText(props.connectedWallet.address);
-        toast.add({ severity: 'info', summary: 'Info', detail: 'Address was copied to clipboard', life: 3000 });
-    } catch (error) {
-        console.log('error: ', error);
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Copy process interupted', life: 5000 });
+            if (props.connectedWallet) {
+                await __showTronInfo(false);
+            }
+        }, 15000);
     }
 }
 
-const isValueHours = (value) => {
-    return (value % 24) > 0;
-};
-
-const showOrderDetails = (order) => {
-    console.log("data", order)
-    console.log("data", order.unique_id)
-};
 
 /**
  *
@@ -283,7 +332,7 @@ const changeDuration = (event) => {
     formOrder.price = props.formConfig[formOrder.selectedResource.code].durations.find((duration) => duration.code == formOrder.selectedDurationSource.code).price;
 };
 
-const tronAddressValidity = () => {
+const tronAddressValidity = async () => {
     if (formOrder.source_address == '' || formOrder.source_address.length < 34) {
         return;
     }
@@ -295,7 +344,7 @@ const tronAddressValidity = () => {
         body: JSON.stringify({ address: formOrder.source_address, visible: true })
     };
 
-    fetch('https://api.shasta.trongrid.io/wallet/validateaddress', options)
+    await fetch('https://api.shasta.trongrid.io/wallet/validateaddress', options)
         .then(response => response.json())
         .then(function (response) {
             if (response.result == false) {
@@ -308,6 +357,12 @@ const tronAddressValidity = () => {
         });
 };
 
+const balanceTrx = computed(() => {
+    return !props.connectedWallet ? 0 : numeral(props.connectedWallet.wallet_balance).format('0,00.00');
+});
+const stakedTrx = computed(() => {
+    return !props.connectedWallet ? 0 : numeral(props.connectedWallet.wallet_staked_trx).format('0,0');
+});
 const allTrx = computed(() => {
     let balance = !props.connectedWallet ? 0 : props.connectedWallet.wallet_balance;
     let freeze = !props.connectedWallet ? 0 : props.connectedWallet.wallet_staked_trx;
@@ -315,18 +370,31 @@ const allTrx = computed(() => {
     return numeral(balance + freeze).format('0,0.00');
 });
 
+const energyRemaining = computed(() => {
+    return !props.connectedWallet ? 0 : numeral(props.connectedWallet.bandwidth.energyRemaining).format('0,0');
+});
+const energyLimit = computed(() => {
+    return !props.connectedWallet ? 0 : numeral(props.connectedWallet.bandwidth.energyLimit).format('0,0');
+});
+
+const netRemaining = computed(() => {
+    return !props.connectedWallet ? 0 : numeral((props.connectedWallet.bandwidth.freeNetRemaining + props.connectedWallet.bandwidth.netRemaining)).format('0,0');
+});
+const netLimit = computed(() => {
+    return !props.connectedWallet ? 0 : numeral((props.connectedWallet.bandwidth.freeNetLimit + props.connectedWallet.bandwidth.netLimit)).format('0,0')
+});
+
 const delegatedEnergy = computed(() => {
     let trx = !props.connectedWallet ? 0 : props.connectedWallet.delegatedFrozenV2BalanceForEnergy;
     let cost = !props.connectedWallet ? 0 : props.connectedWallet.energyCost;
 
-    return numeral((trx * cost) / 1000000).format('0,0');
+    return !props.connectedWallet ? 0 : numeral((trx * cost) / 1000000).format('0,0');
 });
-
 const delegatedBandwith = computed(() => {
     let bandwith = !props.connectedWallet ? 0 : props.connectedWallet.delegatedFrozenV2BalanceForBandwidth;
     let netCost = !props.connectedWallet ? 0 : props.connectedWallet.netCost;
 
-    return numeral(bandwith * netCost).format('0,0');
+    return !props.connectedWallet ? 0 : numeral(bandwith * netCost).format('0,0');
 });
 
 /**
@@ -338,7 +406,7 @@ const finalPrice = computed(() => {
     let result = formOrder.amount * formOrder.price;
     let duration = isValueHours(formOrder.selectedDurationSource.code) ? formOrder.selectedDurationSource.code : (formOrder.selectedDurationSource.code / 24);
 
-    return result ? Math.round(((result / 1000000) * duration) * 100) / 100 : 0;
+    return result ? numeral(((result / 1000000) * duration)).format('0,00.00') : 0;
 });
 
 const isSubmitButtonDisabled = computed(() => {
@@ -351,12 +419,28 @@ const formOrderSubmit = () => {
         group: 'headless',
         header: 'Create the order',
         message: 'Please confirm to proceed the order',
-        accept: () => {
+        accept: async () => {
             try {
+                if (finalPrice.value > props.connectedWallet.wallet_balance) {
+                    throw "Your TRX balance is not enought!";
+                }
+
+                let tronWeb = tronWallet.value;
+
+                var tx = await tronWeb.transactionBuilder.sendTrx(props.targetAddress, finalPrice.value, formOrder.source_address);
+                var signedTx = await tronWeb.trx.sign(tx);
+                var broastTx = await tronWeb.trx.sendRawTransaction(signedTx);
+
+                if (!broastTx.result) {
+                    throw "Something wrong happend on blockchain!";
+                }
+
                 formOrder.transform((data) => ({
                     ...data,
                     'resource': data.selectedResource.code,
                     'hours': data.selectedDurationSource.code,
+                    'total': finalPrice.value,
+                    'txid': broastTx.txid,
                 }))
                 .post('/orders', {
                     errorBag: 'submitOrder',
@@ -372,7 +456,7 @@ const formOrderSubmit = () => {
                 });
             } catch (error) {
                 console.log('formOrderSubmit() - error: ', error);
-                toast.add({ severity: 'error', summary: 'Error', detail: 'Order process interupted ' + error, life: 5000 });
+                toast.add({ severity: 'error', summary: 'Error', detail: 'Order process interupted - ' + error, life: 5000 });
             }
         },
         reject: () => {
@@ -382,6 +466,36 @@ const formOrderSubmit = () => {
             toast.add({ severity: 'info', summary: 'Cancelled', detail: 'You cancelled the order', life: 3000 });
         },
     });
+};
+
+
+/**
+ *
+ * Utility functions
+ *
+ */
+ async function copyTrxWallet() {
+    try {
+        await navigator.clipboard.writeText(props.connectedWallet.address);
+        toast.add({ severity: 'info', summary: 'Info', detail: 'Address was copied to clipboard', life: 3000 });
+    } catch (error) {
+        console.log('error: ', error);
+        toast.add({ severity: 'error', summary: 'Error', detail: 'Copy process interupted', life: 5000 });
+    }
+}
+
+const isValueHours = (value) => {
+    return (value % 24) > 0;
+};
+
+const showOrderDetails = (order) => {
+    orderDetails.value = order;
+    showOrderDetailsModal.value = true;
+};
+
+const closeOrderDetailsModal = () => {
+    orderDetails.value = null;
+    showOrderDetailsModal.value = false;
 };
 </script>
 
@@ -434,11 +548,11 @@ const formOrderSubmit = () => {
                         <div class="grid gap-4 grid-cols-3">
                             <div>
                                 <span class="text-xs text-gray-500">Balance (TRX)</span>
-                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : numeral(connectedWallet.wallet_balance).format('0,00.00') }}</p>
+                                <p class="text-xl font-semibold">{{ balanceTrx }}</p>
                             </div>
                             <div>
                                 <span class="text-xs text-gray-500">Staked (TRX)</span>
-                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : numeral(connectedWallet.wallet_staked_trx).format('0,0') }}</p>
+                                <p class="text-xl font-semibold">{{ stakedTrx }}</p>
                             </div>
                             <div>
                                 <span class="text-xs text-gray-500">All (TRX)</span>
@@ -457,8 +571,8 @@ const formOrderSubmit = () => {
                                     <span class="pi pi-bolt mr-3 text-blue-600 font-semibold"></span>Energy
                                 </p>
                                 <span class="text-base font-thin text-gray-600 icon-container">
-                                    {{ !connectedWallet ? 0 : numeral(connectedWallet.bandwidth.energyRemaining).format('0,0') }}
-                                    <span class="text-slate-400">&nbsp;/&nbsp;{{ !connectedWallet ? 0 : numeral(connectedWallet.bandwidth.energyLimit).format('0,0') }}</span>
+                                    {{ energyRemaining }}
+                                    <span class="text-slate-400">&nbsp;/&nbsp;{{ energyLimit }}</span>
                                 </span>
                             </div>
                             <div>
@@ -466,8 +580,8 @@ const formOrderSubmit = () => {
                                     <span class="material-symbols-outlined mr-3 text-emerald-600 font-bold">avg_pace</span>Bandwidth
                                 </p>
                                 <span class="text-base font-thin text-gray-600 icon-container">
-                                    {{ !connectedWallet ? 0 : numeral((connectedWallet.bandwidth.freeNetRemaining + connectedWallet.bandwidth.netRemaining)).format('0,0') }}
-                                    <span class="text-slate-400">&nbsp;/&nbsp;{{ !connectedWallet ? 0 : numeral((connectedWallet.bandwidth.freeNetLimit + connectedWallet.bandwidth.netLimit)).format('0,0') }}</span>
+                                    {{ netRemaining }}
+                                    <span class="text-slate-400">&nbsp;/&nbsp;{{ netLimit }}</span>
                                 </span>
                             </div>
                         </div>
@@ -476,11 +590,11 @@ const formOrderSubmit = () => {
                         <div class="grid gap-4 grid-cols-2">
                             <div>
                                 <span class="text-xs text-gray-500">Delegated Energy</span>
-                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : delegatedEnergy }}</p>
+                                <p class="text-xl font-semibold">{{ delegatedEnergy }}</p>
                             </div>
                             <div>
                                 <span class="text-xs text-gray-500">Delegated Bandwidth</span>
-                                <p class="text-xl font-semibold">{{ !connectedWallet ? 0 : delegatedBandwith }}</p>
+                                <p class="text-xl font-semibold">{{ delegatedBandwith }}</p>
                             </div>
                         </div>
                     </template>
@@ -648,7 +762,7 @@ const formOrderSubmit = () => {
                                 <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The price/day in SUN for resource unit. Note: 1 SUN = 0.000001 TRX'" placeholder="Top"></span>
                             </template>
                             <template #body="{ data }">
-                                price
+                                {{ numeral(data.total).format('0,00.00') }}
                             </template>
                         </Column>
                         <Column header="Payout">
@@ -656,7 +770,13 @@ const formOrderSubmit = () => {
                                 <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The payout to the seller / the payment of the buyer'" placeholder="Top"></span>
                             </template>
                             <template #body="{ data }">
-                                Payout
+                                <div class="text-blue-600 font-semibold">
+                                    {{ numeral(data.total).format('0,00.00') * 0.7 }} TRX
+                                </div>
+
+                                <div class="text-xs">
+                                    {{ numeral(data.total).format('0,00.00') }} TRX
+                                </div>
                             </template>
                         </Column>
                         <Column header="Fullfilled" class="hide-on-mobile">
@@ -675,50 +795,61 @@ const formOrderSubmit = () => {
 
     <Toast style="top: 75px;" />
 
-    <Dialog v-model:visible="showWalletDetails" modal header="Wallet details"
-        :style="{ width: 'auto', minWidth: '30rem', padding: '50px' }"
-        :breakpoints="{ '1199px': '75vw', '575px': '90vw' }">
+    <Dialog v-model:visible="showOrderDetailsModal" modal :breakpoints="{ '1199px': '75vw', '575px': '95vw' }">
         <template #header>
             <div class="inline-flex items-center justify-center gap-2">
-                <span class="pi pi-wallet mr-2 text-primary-500"></span>
-                <span class="font-bold whitespace-nowrap font-bold font-mono ">Wallet details</span>
+                <span class="pi pi-book mr-2 text-primary-500"></span>
+                <span class="font-bold whitespace-nowrap font-bold font-mono ">Order details</span>
             </div>
         </template>
 
-        <div class="grid grid-cols-1 gap-3 content-center">
+        <div class="grid grid-cols-1 gap-3 mt-3 content-center break-all">
             <div class="grid grid-cols-1 md:grid-cols-3">
-                <div class="font-bold ">Wallet name</div>
-                <div class="col-span-2">{{ connectedWallet.wallet_name }}</div>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3">
-                <div class="font-bold">
-                    Address
-                    <Button @click="copyTrxWallet()" class="py-[2px] inline-flex sm:hidden"
-                        icon="pi pi-copy" text aria-label="copy wallet" />
-                </div>
+                <div class="font-bold">Target Address</div>
                 <div class="col-span-2">
-                    {{ connectedWallet.address }}
-                    <Button @click="copyTrxWallet()"
-                        class="py-[2px] hidden sm:inline-flex" icon="pi pi-copy" text
-                        aria-label="copy wallet" />
+                    <a :href="props.tronscanAdress + orderDetails.target_address" target="_blank" rel="noopener noreferrer" class="p-button text-primary-500">
+                        {{ orderDetails.target_address }}
+                        <span class="pi pi-external-link ml-2 text-primary-500"></span>
+                    </a>
                 </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3">
-                <div class="font-bold">Balance</div>
-                <div class="col-span-2">{{ connectedWallet.wallet_balance }}</div>
+            <div class="grid grid-cols-3">
+                <div class="font-bold">Price</div>
+                <div class="col-span-2 text-right md:text-left">{{ numeral(orderDetails.total).format('0,00.00') }}</div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3">
-                <div class="font-bold">Energy</div>
-                <div class="col-span-2">{{ connectedWallet.wallet_energy }}</div>
+            <div class="grid grid-cols-3">
+                <div class="font-bold">Payout</div>
+                <div class="col-span-2 text-right md:text-left">
+                    <div class="text-blue-600 font-semibold">
+                        {{ numeral(orderDetails.total).format('0,00.00') * 0.7 }} TRX
+                    </div>
+
+                    <div class="text-xs">
+                        {{ numeral(orderDetails.total).format('0,00.00') }} TRX
+                    </div>
+                </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3">
-                <div class="font-bold">Bandwidth</div>
-                <div class="col-span-2">{{ connectedWallet.wallet_bandwith }}</div>
+            <div class="grid grid-cols-3">
+                <div class="font-bold">Fullfilled</div>
+                <div class="col-span-2 text-right md:text-left">xxx %</div>
+            </div>
+            <div class="grid grid-cols-3">
+                <div class="font-bold">Created at</div>
+                <div class="col-span-2 text-right md:text-left">{{ moment(orderDetails.created_at).format('YYYY-MM-DD h:mm') }}</div>
+            </div>
+            <div class="grid grid-cols-3">
+                <div class="font-bold">Transaction</div>
+                <div class="col-span-2">
+                    <a :href="props.tronscanTransaction + orderDetails.txid" target="_blank" rel="noopener noreferrer" class="p-button text-primary-500">
+                        {{ orderDetails.txid }}
+                        <span class="pi pi-external-link ml-2 text-primary-500"></span>
+                    </a>
+                </div>
             </div>
         </div>
 
         <template #footer>
-            <Button label="Ok" @click="showWalletDetails = false" text />
+            <Button label="Ok" @click="closeOrderDetailsModal()" text />
         </template>
     </Dialog>
 

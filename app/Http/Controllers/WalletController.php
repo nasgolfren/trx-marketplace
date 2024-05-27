@@ -17,7 +17,7 @@ class WalletController extends Controller
     ) {}
 
 
-    public function save(WalletInfoPostRequest $request)
+    public function store(WalletInfoPostRequest $request)
     {
         try {
             $data = $request->safe()->all();

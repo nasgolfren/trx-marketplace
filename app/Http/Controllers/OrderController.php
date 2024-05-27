@@ -15,7 +15,7 @@ class OrderController extends Controller
     ) {}
 
 
-    public function order(OrderPostRequest $request)
+    public function store(OrderPostRequest $request)
     {
         try {
             $data = $request->safe()->all();
@@ -23,6 +23,9 @@ class OrderController extends Controller
             if (!$this->genService->isAddressCorrect($data['source_address'])) {
                 return back()->withErrors(['source_address' => 'Tron address is not valid'])->withInput();
             }
+
+            $data['show_at'] = now()->tz(config('app.timezone'))->addMinutes(15);
+            $data['target_address'] = config('app.targetAddress');
 
             Order::create($data);
         } catch (\Throwable $e) {

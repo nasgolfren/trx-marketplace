@@ -21,9 +21,12 @@ class HomeController extends Controller
     {
         try {
             return Inertia::render('Welcome', [
-                'orders' => Order::orderBy('created_at', 'desc')->get(),
+                'orders' => Order::where('show_at', '<', now())->orderBy('created_at', 'desc')->get(),
                 'resources' => config('app.resources'),
                 'formConfig' => config('app.formConfig'),
+                'targetAddress' => config('app.targetAddress'),
+                'tronscanTransaction' => config('app.tronscanTransaction'),
+                'tronscanAdress' => config('app.tronscanAdress'),
                 'connectedWallet' => session('connectedWallet'),
             ]);
         } catch (\Throwable $e) {

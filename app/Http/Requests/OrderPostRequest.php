@@ -25,6 +25,9 @@ class OrderPostRequest extends FormRequest
             'source_address' => 'required|string|min:34|max:100',
             'partial_fill' => 'required|boolean',
             'multisignature' => 'required|boolean',
+
+            'total' => 'required|numeric',
+            'txid' => 'required|string|max:190',
         ];
     }
 }

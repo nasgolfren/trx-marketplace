@@ -18,17 +18,17 @@ use Inertia\Inertia;
 |
 */
 
-Route::get('/', [HomeController::class, 'show']);
+Route::middleware(['cors', 'access-log'])->group(function () {
+    Route::get('/', [HomeController::class, 'show']);
 
+    Route::group(['prefix' => 'wallet-info'], function () {
+        Route::post('/', [WalletController::class, 'store']);
+        Route::delete('/', [WalletController::class, 'logout']);
+    });
 
-
-Route::group(['prefix' => 'wallet-info'], function () {
-    Route::post('/', [WalletController::class, 'save']);
-    Route::delete('/', [WalletController::class, 'logout']);
-});
-
-Route::group(['prefix' => 'orders'], function () {
-    Route::post('/', [OrderController::class, 'order']);
+    Route::group(['prefix' => 'orders'], function () {
+        Route::post('/', [OrderController::class, 'store']);
+    });
 });
 
 Route::middleware([
