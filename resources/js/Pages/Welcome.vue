@@ -774,7 +774,7 @@ const closeOrderDetailsModal = () => {
                                 </template>
                                 <template #body="{ data }">
                                     <div class="text-blue-600 font-semibold">
-                                        {{ numeral(data.total).format('0,00.00') * 0.7 }} TRX
+                                        {{ numeral(data.total  * 0.7).format('0,00.00')}} TRX
                                     </div>
 
                                     <div class="text-xs">
