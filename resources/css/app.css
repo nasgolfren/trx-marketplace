@@ -155,3 +155,7 @@
 #nprogress .spinner {
     display: none;
 }
+
+.text-22 {
+    font-size: 22px !important;
+}

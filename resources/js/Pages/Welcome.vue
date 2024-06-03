@@ -27,6 +27,8 @@ import NProgress from 'nprogress';
 import moment from 'moment';
 import numeral from 'numeral';
 import { convertJsonToReadableText } from '@/functions';
+import TabView from 'primevue/tabview';
+import TabPanel from 'primevue/tabpanel';
 
 
 /**
@@ -56,6 +58,7 @@ const formOrder = useForm({
 
 const props = defineProps({
     orders: Array,
+    myOrders: Array,
     durations: Array,
     resources: Array,
     formConfig: Object,
@@ -715,80 +718,167 @@ const closeOrderDetailsModal = () => {
             </div>
 
             <div class="col-span-full lg:col-span-2 order-book">
-                <Fieldset>
-                    <template #legend>
-                        <div class="flex items-center gap-2 px-2">
-                            <span class="pi pi-book mr-2 text-primary-500"></span>
-                            <span class="font-bold">Orders</span>
-                        </div>
-                    </template>
+                <TabView class="tabview-custom">
+                    <TabPanel>
+                        <template #header>
+                            <div class="flex items-center gap-2 px-2">
+                                <span class="pi pi-book mr-2 text-primary-500"></span>
+                                <span class="font-bold">Orders</span>
+                            </div>
+                        </template>
 
-                    <DataTable :value="orders" stripedRows paginator :size="'small'" :rows="10" :rowsPerPageOptions="[10, 20, 50]">
-                        <Column header="">
-                            <template #body="{ data }">
-                                <Button icon="pi pi-info-circle" severity="info" text outlined rounded aria-label="User" @click="showOrderDetails(data)" />
-                            </template>
-                        </Column>
-                        <Column field="created_at" header="Date">
-                            <template #header>
-                                <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The date when the order has been created'" placeholder="Top"></span>
-                            </template>
-                            <template #body="{ data }">
-                                {{ moment(data.created_at).format('h:mm') }}
-                                <div class="text-xs">{{ moment(data.created_at).format('MM-DD') }}</div>
-                            </template>
-                        </Column>
-                        <Column field="amount" header="Resource" class="hide-on-mobile">
-                            <template #header>
-                                <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'Type of resource'" placeholder="Top"></span>
-                            </template>
-                            <template #body="{ data }">
-                                <div v-if="data.resource == 'energy'" class="text-blue-600 font-semibold">
-                                    {{ data.amount }}<span class="pi pi-bolt"></span>
-                                </div>
-                                <div v-else class="text-emerald-600 font-semibold icon-container">
-                                    {{ data.amount }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
-                                </div>
+                        <DataTable class="mt-4" :value="orders" stripedRows paginator :size="'small'" :rows="10" :rowsPerPageOptions="[10, 20, 50]">
+                            <Column header="">
+                                <template #body="{ data }">
+                                    <Button icon="pi pi-info-circle" severity="info" text outlined rounded aria-label="User" @click="showOrderDetails(data)" />
+                                </template>
+                            </Column>
+                            <Column field="created_at" header="Date">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The date when the order has been created'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    {{ moment(data.created_at).format('h:mm') }}
+                                    <div class="text-xs">{{ moment(data.created_at).format('MM-DD') }}</div>
+                                </template>
+                            </Column>
+                            <Column field="amount" header="Resource" class="hide-on-mobile">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'Type of resource'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    <div v-if="data.resource == 'energy'" class="text-blue-600 font-semibold">
+                                        {{ numeral(data.amount).format('0,00') }}<span class="pi pi-bolt"></span>
+                                    </div>
+                                    <div v-else class="text-emerald-600 font-semibold icon-container">
+                                        {{ numeral(data.amount).format('0,00') }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
+                                    </div>
 
-                                <div class="text-xs">
-                                    / {{ data.hours }}
-                                    <span v-if="isValueHours(data.hours)">hours</span>
-                                    <span v-else>days</span>
-                                </div>
-                            </template>
-                        </Column>
-                        <Column header="Price">
-                            <template #header>
-                                <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The price/day in SUN for resource unit. Note: 1 SUN = 0.000001 TRX'" placeholder="Top"></span>
-                            </template>
-                            <template #body="{ data }">
-                                {{ numeral(data.total).format('0,00.00') }}
-                            </template>
-                        </Column>
-                        <Column header="Payout">
-                            <template #header>
-                                <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The payout to the seller / the payment of the buyer'" placeholder="Top"></span>
-                            </template>
-                            <template #body="{ data }">
-                                <div class="text-blue-600 font-semibold">
-                                    {{ numeral(data.total).format('0,00.00') * 0.7 }} TRX
-                                </div>
+                                    <div class="text-xs">
+                                        <span v-if="isValueHours(data.hours)"> / {{ data.hours }} hours</span>
+                                        <span v-else>/ {{ data.hours / 24 }} days</span>
+                                    </div>
+                                </template>
+                            </Column>
+                            <Column header="Price">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The price/day in SUN for resource unit. Note: 1 SUN = 0.000001 TRX'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    {{ numeral(data.price).format('0,00') }} SUN
+                                </template>
+                            </Column>
+                            <Column header="Payout">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The payout to the seller / the payment of the buyer'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    <div class="text-blue-600 font-semibold">
+                                        {{ numeral(data.total).format('0,00.00') * 0.7 }} TRX
+                                    </div>
 
-                                <div class="text-xs">
-                                    {{ numeral(data.total).format('0,00.00') }} TRX
-                                </div>
-                            </template>
-                        </Column>
-                        <Column header="Fullfilled" class="hide-on-mobile">
-                            <template #header>
-                                <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'A percentage how much the order is completed'" placeholder="Top"></span>
-                            </template>
-                            <template #body="{ data }">
-                                <ProgressBar :value="50"></ProgressBar>
-                            </template>
-                        </Column>
-                    </DataTable>
-                </Fieldset>
+                                    <div class="text-xs">
+                                        {{ numeral(data.total).format('0,00.00') }} TRX
+                                    </div>
+                                </template>
+                            </Column>
+                            <Column header="Fullfilled" class="hide-on-mobile">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'A percentage how much the order is completed'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    <ProgressBar :value="50"></ProgressBar>
+                                </template>
+                            </Column>
+                        </DataTable>
+                    </TabPanel>
+                    <TabPanel :disabled="!connectedWallet">
+                        <template #header>
+                            <div class="flex items-center gap-2 px-2">
+                                <span class="material-symbols-outlined text-primary-500 text-22">order_approve</span>
+                                <span class="font-bold">My Orders</span>
+                            </div>
+                        </template>
+
+                        <DataTable class="mt-4" :value="myOrders" stripedRows paginator :size="'small'" :rows="10" :rowsPerPageOptions="[10, 20, 50]">
+                            <Column header="">
+                                <template #body="{ data }">
+                                    <Button icon="pi pi-info-circle" severity="info" text outlined rounded aria-label="User" @click="showOrderDetails(data)" />
+                                </template>
+                            </Column>
+                            <Column field="created_at" header="Date">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The date when the order has been created'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    {{ moment(data.created_at).format('h:mm') }}
+                                    <div class="text-xs">{{ moment(data.created_at).format('MM-DD') }}</div>
+                                </template>
+                            </Column>
+                            <Column field="amount" header="Resource" class="hide-on-mobile">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'Type of resource'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    <div v-if="data.resource == 'energy'" class="text-blue-600 font-semibold">
+                                        {{ numeral(data.amount).format('0,00') }}<span class="pi pi-bolt"></span>
+                                    </div>
+                                    <div v-else class="text-emerald-600 font-semibold icon-container">
+                                        {{ numeral(data.amount).format('0,00') }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
+                                    </div>
+
+                                    <div class="text-xs">
+                                        <span v-if="isValueHours(data.hours)"> / {{ data.hours }} hours</span>
+                                        <span v-else>/ {{ data.hours / 24 }} days</span>
+                                    </div>
+                                </template>
+                            </Column>
+                            <Column header="Price">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The price/day in SUN for resource unit. Note: 1 SUN = 0.000001 TRX'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    {{ numeral(data.price).format('0,00') }} SUN
+                                </template>
+                            </Column>
+                            <Column header="Payout">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The payout to the seller / the payment of the buyer'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    <div class="text-blue-600 font-semibold">
+                                        {{ numeral(data.total * 0.7).format('0,00.00') }} TRX
+                                    </div>
+
+                                    <div class="text-xs">
+                                        {{ numeral(data.total).format('0,00.00') }} TRX
+                                    </div>
+                                </template>
+                            </Column>
+                            <Column header="Fullfilled" class="hide-on-mobile">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'A percentage how much the order is completed'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    <ProgressBar :value="50"></ProgressBar>
+                                </template>
+                            </Column>
+                        </DataTable>
+                    </TabPanel>
+                    <TabPanel :disabled="true">
+                        <template #header>
+                            <div class="flex items-center gap-2 px-2">
+                                <span class="material-symbols-outlined text-primary-500 text-22">receipt</span>
+                                <span class="font-bold">My Receipts</span>
+                            </div>
+                        </template>
+
+                        <p class="m-0">
+                            At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident, similique sunt in culpa qui
+                            officia deserunt mollitia animi, id est laborum et dolorum fuga. Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo minus.
+                        </p>
+                    </TabPanel>
+                </TabView>
             </div>
         </div>
     </div>
@@ -870,7 +960,7 @@ const closeOrderDetailsModal = () => {
                                 Amount <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The amount expected in energy or bandwidth'" placeholder="Top"></span>
                             </label>
                             <div class="mt-1">
-                                {{ formOrder.amount }}
+                                {{ numeral(formOrder.amount).format('0,00') }}
                             </div>
                         </div>
 
@@ -938,10 +1028,10 @@ const closeOrderDetailsModal = () => {
                             <div class="flex justify-between">
                                 <div>{{ formOrder.selectedResource.name }}</div>
                                 <div v-if="formOrder.selectedResource.code == 'energy'" class="text-blue-600 font-semibold">
-                                    {{ formOrder.amount }}<span class="pi pi-bolt"></span>
+                                    {{ numeral(formOrder.amount).format('0,00') }}<span class="pi pi-bolt"></span>
                                 </div>
                                 <div v-else class="text-emerald-600 font-semibold icon-container">
-                                    {{ formOrder.amount }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
+                                    {{ numeral(formOrder.amount).format('0,00') }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
                                 </div>
                             </div>
                             <div class="flex justify-between mt-2 font-semibold">
