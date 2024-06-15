@@ -28,6 +28,7 @@ Route::middleware(['cors', 'access-log'])->group(function () {
 
     Route::group(['prefix' => 'orders'], function () {
         Route::post('/', [OrderController::class, 'store']);
+        Route::post('/{unique_id}', [OrderController::class, 'storeSellOrder']);
     });
 });
 

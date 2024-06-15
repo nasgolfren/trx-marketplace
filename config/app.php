@@ -196,6 +196,7 @@ return [
     'formConfig' => [
         'energy' => [
             'minAmountValue' => 64000,
+            'minSellAmountValue' => 32000,
             //'minPriceValue' => 50,
             'durations' => [
                 ['name' => '1 hour', 'code' => 1, 'price' => 60,],
@@ -234,6 +235,7 @@ return [
         ],
         'bandwidth' => [
             'minAmountValue' => 2000,
+            'minSellAmountValue' => 1000,
             //'minPriceValue' => 10,
             'durations' => [
                 ['name' => '1 hour', 'code' => 1, 'price' => 1500,],
@@ -280,4 +282,5 @@ return [
     'targetAddress' => 'TYPaDViYwW6LGYkb3Ca5Hq56NCRAgpnEKb',
     'tronscanTransaction' => 'https://tronscan.org/#/transaction/',
     'tronscanAdress' => 'https://tronscan.org/#/address/',
+    'reward' => 0.7,
 ];

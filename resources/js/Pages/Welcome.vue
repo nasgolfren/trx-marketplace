@@ -26,7 +26,7 @@ import NProgress from 'nprogress';
 
 import moment from 'moment';
 import numeral from 'numeral';
-import { convertJsonToReadableText } from '@/functions';
+import { convertJsonToReadableText, isValueHours } from '@/functions';
 import TabView from 'primevue/tabview';
 import TabPanel from 'primevue/tabpanel';
 
@@ -56,6 +56,13 @@ const formOrder = useForm({
     multisignature: true,
 });
 
+const formSellOrder = useForm({
+    amount: 0,
+    reward: 0,
+    total_reward: 0,
+    payout_target_address: '',
+});
+
 const props = defineProps({
     orders: Array,
     myOrders: Array,
@@ -66,6 +73,7 @@ const props = defineProps({
     targetAddress: String,
     tronscanTransaction: String,
     tronscanAdress: String,
+    reward: Number,
 });
 
 const buttonitems = [
@@ -75,6 +83,7 @@ const buttonitems = [
         command: () => {
             tronWallet.value = null;
             delete formOrder.errors.source_address;
+            delete formSellOrder.errors.payout_target_address;
 
             clearInterval(refreshWalletInterval);
             refreshWalletInterval = null;
@@ -117,6 +126,7 @@ onMounted(async () => {
         await initTrxWallet();
 
         formOrder.source_address = props.connectedWallet.address;
+        formSellOrder.payout_target_address = props.connectedWallet.address;
     }
 
     // Tronlink events
@@ -321,6 +331,16 @@ const minPriceValue = computed(() => {
 const updateAmount = (event) => {
     formOrder.amount = event.value;
 };
+const updateSellAmount = (event, data) => {
+    formSellOrder.amount = event.value;
+    formSellOrder.reward = (event.value * props.reward) / props.connectedWallet.energyCost;
+    formSellOrder.total_reward = (event.value / props.connectedWallet.energyCost);
+
+    delete formSellOrder.errors.amount;
+    if (formSellOrder.amount > props.connectedWallet.bandwidth.energyRemaining) {
+        formSellOrder.errors.amount = 'Your remaining '+ data.resource +' balance is not enought!';
+    }
+};
 const updatePrice = (event) => {
     formOrder.price = event.value;
 };
@@ -335,28 +355,56 @@ const changeDuration = (event) => {
     formOrder.price = props.formConfig[formOrder.selectedResource.code].durations.find((duration) => duration.code == formOrder.selectedDurationSource.code).price;
 };
 
-const tronAddressValidity = async () => {
-    if (formOrder.source_address == '' || formOrder.source_address.length < 34) {
-        return;
+const tronAddressValidity = async (formType) => {
+    let formAddress = formOrder.source_address;
+
+    if (formType == 'sell') {
+        formAddress = formSellOrder.payout_target_address;
+
+        if (formSellOrder.payout_target_address == '' || formSellOrder.payout_target_address.length < 34) {
+            return;
+        }
+
+        delete formSellOrder.errors.payout_target_address;
     }
-    delete formOrder.errors.source_address;
+
+    if (formType == 'buy') {
+        if (formOrder.source_address == '' || formOrder.source_address.length < 34) {
+            return;
+        }
+
+        delete formOrder.errors.source_address;
+    }
 
     const options = {
         method: 'POST',
         headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: JSON.stringify({ address: formOrder.source_address, visible: true })
+        body: JSON.stringify({ address: formAddress, visible: true })
     };
 
     await fetch('https://api.shasta.trongrid.io/wallet/validateaddress', options)
         .then(response => response.json())
         .then(function (response) {
             if (response.result == false) {
-                formOrder.errors.source_address = 'Tron address is not valid';
+                let message = 'Tron address is not valid';
+
+                if (formType == 'sell') {
+                    formSellOrder.errors.payout_target_address = message;
+                }
+                if (formType == 'buy') {
+                    formOrder.errors.source_address = message;
+                }
             }
         })
         .catch(function (error) {
+            let message = 'Something goes wrong, try it again or contact admin!';
 
-            formOrder.errors.source_address = 'Something goes wrong, try it again or contact admin!';
+            if (formType == 'sell') {
+                formSellOrder.errors.payout_target_address = message;
+            }
+            if (formType == 'buy') {
+                formOrder.errors.source_address = message;
+            }
         });
 };
 
@@ -400,6 +448,28 @@ const delegatedBandwith = computed(() => {
     return !props.connectedWallet ? 0 : numeral(bandwith * netCost).format('0,0');
 });
 
+const fillMaxValueToSellOrder = (data) => {
+    let orderReaminingAmount = (data.amount - data.filled_amount);
+
+    if (orderReaminingAmount < energyRemaining.value) {
+        orderReaminingAmount = energyRemaining.value;
+    }
+
+    formSellOrder.amount = orderReaminingAmount;
+
+    formSellOrder.reward = (orderReaminingAmount * props.reward) / props.connectedWallet.energyCost;
+    formSellOrder.total_reward = (orderReaminingAmount / props.connectedWallet.energyCost);
+
+    delete formSellOrder.errors.amount;
+    if (formSellOrder.amount > props.connectedWallet.bandwidth.energyRemaining) {
+        formSellOrder.errors.amount = 'Your remaining '+ data.resource +' balance is not enought!';
+    }
+};
+
+const showSellOrderResourceType = (resourceType) => {
+    return props.resources.find((resource) => resource.code == resourceType).name;
+};
+
 /**
  *
  * Form - order data
@@ -417,9 +487,9 @@ const isSubmitButtonDisabled = computed(() => {
         || !formOrder.source_address || formOrder.source_address.length < 34;
 });
 
-const formOrderSubmit = () => {
+const formBuyOrderSubmit = () => {
     confirm.require({
-        group: 'headless',
+        group: 'confirmBuyOrder',
         header: 'Create the order',
         message: 'Please confirm to proceed the order',
         accept: async () => {
@@ -446,7 +516,7 @@ const formOrderSubmit = () => {
                     'txid': broastTx.txid,
                 }))
                 .post('/orders', {
-                    errorBag: 'submitOrder',
+                    errorBag: 'formOrder',
                     preserveState: true,
                     preserveScroll: true,
                     onSuccess: (response) => {
@@ -454,11 +524,11 @@ const formOrderSubmit = () => {
                     },
                     onError: (errors) => {
                         toast.add({ severity: 'error', summary: 'Error', detail: convertJsonToReadableText(errors), life: 5000 });
-                        console.log("error /orders - ", convertJsonToReadableText(errors));
+                        console.log('error /orders - ', convertJsonToReadableText(errors));
                     }
                 });
             } catch (error) {
-                console.log('formOrderSubmit() - error: ', error);
+                console.log('formBuyOrderSubmit() - error: ', error);
                 toast.add({ severity: 'error', summary: 'Error', detail: 'Order process interupted - ' + error, life: 5000 });
             }
         },
@@ -469,6 +539,65 @@ const formOrderSubmit = () => {
             toast.add({ severity: 'info', summary: 'Cancelled', detail: 'You cancelled the order', life: 3000 });
         },
     });
+};
+
+const formSellOrderSubmit = (orderData) => {
+    confirm.require({
+        group: 'confirmSellOrder',
+        header: 'Fill the order',
+        data: orderData,
+        accept: async () => {
+            try {
+                if (formSellOrder.amount > props.connectedWallet.bandwidth.energyRemaining) {
+                    //throw 'Your remaining '+ data.resource +' balance is not enought!';
+                }
+
+                // let tronWeb = tronWallet.value;
+
+                // var tx = await tronWeb.transactionBuilder.sendTrx(props.targetAddress, finalPrice.value, formOrder.source_address);
+                // var signedTx = await tronWeb.trx.sign(tx);
+                // var broastTx = await tronWeb.trx.sendRawTransaction(signedTx);
+
+                // if (!broastTx.result) {
+                //     throw "Something wrong happend on blockchain!";
+                // }
+
+                formSellOrder.transform((data) => ({
+                    ...data,
+                    'resource': orderData.resource,
+                }))
+                .post('/orders/' + orderData.unique_id, {
+                    errorBag: 'formSellOrder',
+                    preserveState: true,
+                    preserveScroll: true,
+                    onSuccess: (response) => {
+                        toast.add({ severity: 'success', summary: 'Success', detail: 'The fill order has been successfully created!', life: 3000 });
+                    },
+                    onError: (errors) => {
+                        toast.add({ severity: 'error', summary: 'Error', detail: convertJsonToReadableText(errors), life: 5000 });
+                        console.log("error /orders - ", convertJsonToReadableText(errors));
+                    }
+                });
+            } catch (error) {
+                console.log('formSellOrderSubmit() - error: ', error);
+                toast.add({ severity: 'error', summary: 'Error', detail: 'Order process interupted - ' + error, life: 5000 });
+            }
+        },
+        reject: () => {
+            toast.add({ severity: 'info', summary: 'Cancelled', detail: 'You cancelled the order', life: 3000 });
+        },
+        onHide: () => {
+            toast.add({ severity: 'info', summary: 'Cancelled', detail: 'You cancelled the order', life: 3000 });
+        },
+    });
+};
+
+const minValueSellOrder = (data) => {
+    return props.formConfig[data.resource].minSellAmountValue;
+};
+
+const maxValueSellOrder = (data) => {
+    return data.amount - data.filled_amount;
 };
 
 
@@ -486,10 +615,6 @@ const formOrderSubmit = () => {
         toast.add({ severity: 'error', summary: 'Error', detail: 'Copy process interupted', life: 5000 });
     }
 }
-
-const isValueHours = (value) => {
-    return (value % 24) > 0;
-};
 
 const showOrderDetails = (order) => {
     orderDetails.value = order;
@@ -534,6 +659,31 @@ const closeOrderDetailsModal = () => {
         </Menubar>
 
         <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-8 mb-5">
+            <div>
+                <Card class="overview-card">
+                    <template #title>
+                        <p class="icon-container">
+                            <span class="material-symbols-outlined mr-3">storefront</span>
+                            Market Resources
+                        </p>
+                        <span class="text-base font-thin text-gray-600 icon-container break-all">
+                            &nbsp;
+                        </span>
+                    </template>
+                    <template #subtitle>
+                        <div class="grid gap-4 grid-cols-2">
+                            <div>
+                                <span class="text-xs text-gray-500">Energy</span>
+                                <p class="text-xl font-semibold">{{ balanceTrx }}</p>
+                            </div>
+                            <div>
+                                <span class="text-xs text-gray-500">Bandwith</span>
+                                <p class="text-xl font-semibold">{{ stakedTrx }}</p>
+                            </div>
+                        </div>
+                    </template>
+                </Card>
+            </div>
             <div class="xl:col-end-3">
                 <Card class="overview-card">
                     <template #title>
@@ -607,7 +757,7 @@ const closeOrderDetailsModal = () => {
 
         <div class="grid gap-4 grid-cols-3 grid-rows-1">
             <div class="col-span-full lg:col-span-1" v-focustrap>
-                <form @submit.prevent="formOrderSubmit">
+                <form @submit.prevent="formBuyOrderSubmit">
                 <Fieldset>
                     <template #legend>
                         <div class="flex items-center gap-2 px-2">
@@ -665,7 +815,7 @@ const closeOrderDetailsModal = () => {
                                     <InputGroupAddon>
                                         <i class="pi pi-wallet"></i>
                                     </InputGroupAddon>
-                                    <InputText type="text" v-model="formOrder.source_address" @input="tronAddressValidity" class="w-full" placeholder="TRX address" :invalid="formOrder.errors.source_address" />
+                                    <InputText type="text" v-model="formOrder.source_address" @input="tronAddressValidity('buy')" class="w-full" placeholder="TRX address" :invalid="formOrder.errors.source_address" />
                                 </InputGroup>
                                 <div class="text-red-500 text-xs">{{ formOrder.errors.source_address }}</div>
                             </div>
@@ -697,10 +847,10 @@ const closeOrderDetailsModal = () => {
                             <div class="flex justify-between">
                                 <div>{{ formOrder.selectedResource.name }}</div>
                                 <div v-if="formOrder.selectedResource.code == 'energy'" class="text-blue-600 font-semibold">
-                                    {{ formOrder.amount }}<span class="pi pi-bolt"></span>
+                                    {{ numeral(formOrder.amount).format('0,00') }}<span class="pi pi-bolt"></span>
                                 </div>
                                 <div v-else class="text-emerald-600 font-semibold icon-container">
-                                    {{ formOrder.amount }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
+                                    {{ numeral(formOrder.amount).format('0,00') }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
                                 </div>
                             </div>
                             <div class="flex justify-between mt-2 font-semibold">
@@ -727,7 +877,7 @@ const closeOrderDetailsModal = () => {
                             </div>
                         </template>
 
-                        <DataTable class="mt-4" :value="orders" stripedRows paginator :size="'small'" :rows="10" :rowsPerPageOptions="[10, 20, 50]">
+                        <DataTable class="mt-4" :value="orders" stripedRows paginator :size="'small'" columnResizeMode="fit" :rows="10" :rowsPerPageOptions="[10, 20, 50]">
                             <Column header="">
                                 <template #body="{ data }">
                                     <Button icon="pi pi-info-circle" severity="info" text outlined rounded aria-label="User" @click="showOrderDetails(data)" />
@@ -787,7 +937,12 @@ const closeOrderDetailsModal = () => {
                                     <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'A percentage how much the order is completed'" placeholder="Top"></span>
                                 </template>
                                 <template #body="{ data }">
-                                    <ProgressBar :value="50"></ProgressBar>
+                                    <ProgressBar :value="((100 * data.filled_amount) / data.amount)" class="bg-slate-300"></ProgressBar>
+                                </template>
+                            </Column>
+                            <Column v-if="connectedWallet" header="" class="hide-on-mobile">
+                                <template #body="{ data }">
+                                    <Button label="Sell" severity="info" outlined size="small" @click="formSellOrderSubmit(data)" :disabled="(((100 * data.filled_amount) / data.amount) >= 100) || formSellOrder.processing" />
                                 </template>
                             </Column>
                         </DataTable>
@@ -860,12 +1015,12 @@ const closeOrderDetailsModal = () => {
                                     <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'A percentage how much the order is completed'" placeholder="Top"></span>
                                 </template>
                                 <template #body="{ data }">
-                                    <ProgressBar :value="50"></ProgressBar>
+                                    <ProgressBar :value="((100 * data.filled_amount) / data.amount)" class="bg-slate-300"></ProgressBar>
                                 </template>
                             </Column>
                         </DataTable>
                     </TabPanel>
-                    <TabPanel :disabled="true">
+                    <TabPanel :disabled="!connectedWallet">
                         <template #header>
                             <div class="flex items-center gap-2 px-2">
                                 <span class="material-symbols-outlined text-primary-500 text-22">receipt</span>
@@ -874,8 +1029,7 @@ const closeOrderDetailsModal = () => {
                         </template>
 
                         <p class="m-0">
-                            At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident, similique sunt in culpa qui
-                            officia deserunt mollitia animi, id est laborum et dolorum fuga. Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo minus.
+                            Sell orders
                         </p>
                     </TabPanel>
                 </TabView>
@@ -943,7 +1097,7 @@ const closeOrderDetailsModal = () => {
         </template>
     </Dialog>
 
-    <ConfirmDialog group="headless">
+    <ConfirmDialog group="confirmBuyOrder">
         <template #container="{ message, acceptCallback, rejectCallback }">
             <div class="flex flex-col items-center p-5 bg-surface-0 dark:bg-surface-700 rounded-md">
                 <div class="rounded-full bg-primary-500 dark:bg-primary-400 text-surface-0 dark:text-surface-900 inline-flex justify-center items-center h-[6rem] w-[6rem] -mt-[3rem]">
@@ -1059,8 +1213,92 @@ const closeOrderDetailsModal = () => {
             </div>
         </template>
     </ConfirmDialog>
+
+    <ConfirmDialog group="confirmSellOrder">
+        <template #container="{ message, acceptCallback, rejectCallback }">
+            <div class="flex flex-col items-center p-5 bg-surface-0 dark:bg-surface-700 rounded-md">
+                <div class="rounded-full bg-primary-500 dark:bg-primary-400 text-surface-0 dark:text-surface-900 inline-flex justify-center items-center h-[6rem] w-[6rem] -mt-[3rem]">
+                    <i class="pi pi-question text-5xl"></i>
+                </div>
+                <span class="font-bold text-2xl block mb-2 mt-4">{{ message.header }}</span>
+
+                <div class="my-4 w-full px-4">
+                    <div class="flex flex-col">
+                        <div class="w-full">
+                            <label class="block text-xs font-medium text-gray-900">
+                                To delegate amount ({{ showSellOrderResourceType(message.data.resource) }}) <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The expected delegate amount.'" placeholder="Top"></span>
+                            </label>
+                            <div class="mt-1">
+                                <InputGroup>
+                                    <InputNumber v-model="formSellOrder.amount" @input="updateSellAmount($event, message.data)" size="small" class="w-full" inputId="integeronly" :min="minValueSellOrder(message.data)" :max="maxValueSellOrder(message.data)" :invalid="formSellOrder.errors.amount" />
+                                    <Button label="MAX" @click="fillMaxValueToSellOrder(message.data)"></Button>
+                                </InputGroup>
+                                <div class="text-red-500 text-xs">{{ formSellOrder.errors.amount }}</div>
+                            </div>
+                        </div>
+
+                        <div class="w-full mt-3">
+                            <label class="block text-xs font-medium text-gray-900">
+                                Payout target address <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The target address of the payout obtained. It cannot be a contract address or any other invalid address.'" placeholder="Top"></span>
+                            </label>
+                            <div class="mt-1">
+                                <InputGroup>
+                                    <InputGroupAddon>
+                                        <i class="pi pi-wallet"></i>
+                                    </InputGroupAddon>
+                                    <InputText type="text" v-model="formSellOrder.payout_target_address" @input="tronAddressValidity('sell')" size="small" class="w-full" placeholder="TRX address" :invalid="formSellOrder.errors.payout_target_address" />
+                                </InputGroup>
+                                <div class="text-red-500 text-xs">{{ formSellOrder.errors.payout_target_address }}</div>
+                            </div>
+                        </div>
+
+                        <div class="mt-5">
+                            <div class="flex justify-between mt-2">
+                                <div>{{ showSellOrderResourceType(message.data.resource) }}</div>
+                                <div v-if="message.data.resource == 'energy'" class="text-blue-600 font-semibold">
+                                    {{ numeral(formSellOrder.amount).format('0,00') }}<span class="pi pi-bolt"></span>
+                                </div>
+                                <div v-else class="text-emerald-600 font-semibold icon-container">
+                                    {{ numeral(formSellOrder.amount).format('0,00') }}<span class="material-symbols-outlined material-icon-small">avg_pace</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between">
+                                <div>Duration</div>
+                                <div>
+                                    <span v-if="isValueHours(message.data.hours)">{{ message.data.hours }} hours</span>
+                                    <span v-else>{{ message.data.hours / 24 }} days</span>
+                                </div>
+                            </div>
+
+
+                            <div class="flex justify-between mt-2 font-semibold">
+                                <div>
+                                    Total payout <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'Amout of TRX, which will be delivered to Payout target address.'" placeholder="Top"></span>
+                                </div>
+                                <div class="text-green-600 font-semibold">
+                                    +{{ numeral(formSellOrder.reward).format('0,00') }} (TRX)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 mt-4">
+                    <Button label="Fill Order" @click="acceptCallback"></Button>
+                    <Button label="Cancel" severity="danger" outlined @click="rejectCallback"></Button>
+                </div>
+            </div>
+        </template>
+    </ConfirmDialog>
 </template>
 
 <style>
-
+[data-pc-name="progressbar"] > div {
+    overflow: visible !important;
+    display: flow !important;
+    text-align: center;
+}
+[data-pc-name="progressbar"] > div > div {
+    color: #333;
+}
 </style>

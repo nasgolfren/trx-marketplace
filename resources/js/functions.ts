@@ -1,4 +1,5 @@
-export function convertJsonToReadableText(jsonText): string {
+export function convertJsonToReadableText(jsonText): string
+{
 
     const errors: { [key: string]: string } = JSON.parse(JSON.stringify(jsonText));
 
@@ -12,3 +13,8 @@ export function convertJsonToReadableText(jsonText): string {
 
     return errorMessage;
 }
+
+export function isValueHours(value): boolean
+{
+    return (value % 24) > 0;
+};

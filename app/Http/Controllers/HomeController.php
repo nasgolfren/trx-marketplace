@@ -25,12 +25,16 @@ class HomeController extends Controller
                 'myOrders' => (session('connectedWallet') == null)
                     ? []
                     : Order::where('source_address', Arr::get(session('connectedWallet'), 'address'))->where('show_at', '<', now())->orderBy('created_at', 'desc')->get(),
+                'myReceipts' => (session('connectedWallet') == null)
+                    ? []
+                    : [],
                 'resources' => config('app.resources'),
                 'formConfig' => config('app.formConfig'),
                 'targetAddress' => config('app.targetAddress'),
                 'tronscanTransaction' => config('app.tronscanTransaction'),
                 'tronscanAdress' => config('app.tronscanAdress'),
                 'connectedWallet' => session('connectedWallet'),
+                'reward' => config('app.reward'),
             ]);
         } catch (\Throwable $e) {
             Log::error($e);
