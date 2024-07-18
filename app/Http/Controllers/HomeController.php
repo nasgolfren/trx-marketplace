@@ -6,6 +6,7 @@ use App\Http\Services\GeneralService;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
@@ -21,7 +22,10 @@ class HomeController extends Controller
     {
         try {
             return Inertia::render('Welcome', [
-                'orders' => Order::where('show_at', '<', now())->orderBy('created_at', 'desc')->get(),
+                'orders' => Order::where('show_at', '<', now())
+                    ->orderBy('is_fullfilled')
+                    ->orderBy('created_at', 'desc')
+                    ->get(),
                 'myOrders' => (session('connectedWallet') == null)
                     ? []
                     : Order::where('source_address', Arr::get(session('connectedWallet'), 'address'))->where('show_at', '<', now())->orderBy('created_at', 'desc')->get(),

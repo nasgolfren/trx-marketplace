@@ -45,9 +45,17 @@ class OrderController extends Controller
                 return back()->withErrors(['payout_target_address' => 'Tron address is not valid'])->withInput();
             }
 
-            $data['order_id'] = Order::where('unique_id', $data['unique_id'])->first()->id;
+            $order = Order::where('unique_id', $data['unique_id'])->first();
+            $data['order_id'] = $order->id;
 
             OrderSell::create($data);
+
+            // update order
+            if ($order->filled_percentage == 100) {
+                $order->is_fullfilled = true;
+                $order->save();
+            }
+
         } catch (\Throwable $e) {
             Log::error($e);
             return back()->withErrors([$e->getMessage()])->withInput();

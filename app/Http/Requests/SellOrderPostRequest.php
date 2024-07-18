@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Validator;
 
 class SellOrderPostRequest extends FormRequest
@@ -41,19 +42,29 @@ class SellOrderPostRequest extends FormRequest
      */
     public function after(): array
     {
-        $formConfig = config('app.formConfig')[$this->request->get('resource')];
-
         return [
             function (Validator $validator) {
 
-                // TODO - min amount validation
+                if (empty($this->request->get('resource'))) {
+                    $validator->errors()->add(
+                        'resource',
+                        'The resource field is required.'
+                    );
 
-                // if ($this->somethingElseIsInvalid()) {
-                //     $validator->errors()->add(
-                //         'amount',
-                //         'Minimum amount is !'
-                //     );
-                // }
+                    return;
+                }
+
+                $formConfig = config('app.formConfig')[$this->request->get('resource')];
+                $minAmountValue = Arr::get($formConfig, 'minSellAmountValue');
+
+                if ($this->request->get('amount') < $minAmountValue) {
+                    $validator->errors()->add(
+                        'amount',
+                        'The minimum amount is ' . $minAmountValue . '.',
+                    );
+
+                    return;
+                }
             }
         ];
     }

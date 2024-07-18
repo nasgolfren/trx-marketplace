@@ -259,6 +259,8 @@ async function __showTronInfo(initProcess = true, changedWallet = null) {
             onSuccess: page => {
                 if (initProcess) {
                     formOrder.source_address = props.connectedWallet.address;
+                    formSellOrder.payout_target_address = props.connectedWallet.address;
+
                     toast.add({ severity: 'info', summary: 'Info', detail: 'Wallet successfully connected', life: 3000 });
                 }
 
@@ -295,7 +297,6 @@ const refreshWallet = async () => {
     if (!refreshWalletInterval) {
         refreshWalletInterval = setInterval(async function () {
             console.log('interval!');
-            console.log('props.connectedWallet', props.connectedWallet);
             console.log('refreshWalletInterval', refreshWalletInterval);
 
             if (props.connectedWallet) {
@@ -332,6 +333,10 @@ const updateAmount = (event) => {
     formOrder.amount = event.value;
 };
 const updateSellAmount = (event, data) => {
+    if (event.value < minValueSellOrder(data)) {
+        event.value = minValueSellOrder(data);
+    }
+
     formSellOrder.amount = event.value;
     formSellOrder.reward = (event.value * props.reward) / props.connectedWallet.energyCost;
     formSellOrder.total_reward = (event.value / props.connectedWallet.energyCost);
@@ -542,6 +547,10 @@ const formBuyOrderSubmit = () => {
 };
 
 const formSellOrderSubmit = (orderData) => {
+    if (formSellOrder.amount == 0) {
+        fillMaxValueToSellOrder(orderData);
+    }
+
     confirm.require({
         group: 'confirmSellOrder',
         header: 'Fill the order',
@@ -549,7 +558,7 @@ const formSellOrderSubmit = (orderData) => {
         accept: async () => {
             try {
                 if (formSellOrder.amount > props.connectedWallet.bandwidth.energyRemaining) {
-                    //throw 'Your remaining '+ data.resource +' balance is not enought!';
+                    throw 'Your remaining '+ data.resource +' balance is not enought!';
                 }
 
                 // let tronWeb = tronWallet.value;
@@ -924,12 +933,12 @@ const closeOrderDetailsModal = () => {
                                 </template>
                                 <template #body="{ data }">
                                     <div class="text-blue-600 font-semibold">
-                                        {{ numeral(data.total  * 0.7).format('0,00.00')}} TRX
+                                        {{ numeral(data.total * props.reward).format('0,00.00')}} TRX
                                     </div>
 
-                                    <div class="text-xs">
+                                    <!-- <div class="text-xs">
                                         {{ numeral(data.total).format('0,00.00') }} TRX
-                                    </div>
+                                    </div> -->
                                 </template>
                             </Column>
                             <Column header="Fullfilled" class="hide-on-mobile">
@@ -937,12 +946,12 @@ const closeOrderDetailsModal = () => {
                                     <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'A percentage how much the order is completed'" placeholder="Top"></span>
                                 </template>
                                 <template #body="{ data }">
-                                    <ProgressBar :value="((100 * data.filled_amount) / data.amount)" class="bg-slate-300"></ProgressBar>
+                                    <ProgressBar :value="data.filled_percentage" class="bg-slate-300"></ProgressBar>
                                 </template>
                             </Column>
                             <Column v-if="connectedWallet" header="" class="hide-on-mobile">
                                 <template #body="{ data }">
-                                    <Button label="Sell" severity="info" outlined size="small" @click="formSellOrderSubmit(data)" :disabled="(((100 * data.filled_amount) / data.amount) >= 100) || formSellOrder.processing" />
+                                    <Button label="Sell" severity="info" outlined size="small" @click="formSellOrderSubmit(data)" :disabled="formSellOrder.processing" v-if="data.filled_percentage < 100"/>
                                 </template>
                             </Column>
                         </DataTable>
@@ -1002,12 +1011,12 @@ const closeOrderDetailsModal = () => {
                                 </template>
                                 <template #body="{ data }">
                                     <div class="text-blue-600 font-semibold">
-                                        {{ numeral(data.total * 0.7).format('0,00.00') }} TRX
+                                        {{ numeral(data.total * props.reward).format('0,00.00') }} TRX
                                     </div>
 
-                                    <div class="text-xs">
+                                    <!-- <div class="text-xs">
                                         {{ numeral(data.total).format('0,00.00') }} TRX
-                                    </div>
+                                    </div> -->
                                 </template>
                             </Column>
                             <Column header="Fullfilled" class="hide-on-mobile">
@@ -1015,7 +1024,7 @@ const closeOrderDetailsModal = () => {
                                     <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'A percentage how much the order is completed'" placeholder="Top"></span>
                                 </template>
                                 <template #body="{ data }">
-                                    <ProgressBar :value="((100 * data.filled_amount) / data.amount)" class="bg-slate-300"></ProgressBar>
+                                    <ProgressBar :value="data.filled_percentage" class="bg-slate-300"></ProgressBar>
                                 </template>
                             </Column>
                         </DataTable>
@@ -1059,7 +1068,9 @@ const closeOrderDetailsModal = () => {
             </div>
             <div class="grid grid-cols-3">
                 <div class="font-bold">Price</div>
-                <div class="col-span-2 text-right md:text-left">{{ numeral(orderDetails.total).format('0,00.00') }}</div>
+                <div class="col-span-2 text-right md:text-left">
+                    {{ numeral(orderDetails.price).format('0,00') }} SUN
+                </div>
             </div>
             <div class="grid grid-cols-3">
                 <div class="font-bold">Payout</div>
@@ -1068,14 +1079,16 @@ const closeOrderDetailsModal = () => {
                         {{ numeral(orderDetails.total).format('0,00.00') * 0.7 }} TRX
                     </div>
 
-                    <div class="text-xs">
+                    <!-- <div class="text-xs">
                         {{ numeral(orderDetails.total).format('0,00.00') }} TRX
-                    </div>
+                    </div> -->
                 </div>
             </div>
             <div class="grid grid-cols-3">
                 <div class="font-bold">Fullfilled</div>
-                <div class="col-span-2 text-right md:text-left">xxx %</div>
+                <div class="col-span-2 text-right md:text-left">
+                    <ProgressBar :value="orderDetails.filled_percentage" class="bg-slate-300"></ProgressBar>
+                </div>
             </div>
             <div class="grid grid-cols-3">
                 <div class="font-bold">Created at</div>
@@ -1293,11 +1306,16 @@ const closeOrderDetailsModal = () => {
 </template>
 
 <style>
+[data-pc-section="mask"] {
+    overflow: auto;
+}
+
 [data-pc-name="progressbar"] > div {
     overflow: visible !important;
     display: flow !important;
     text-align: center;
 }
+
 [data-pc-name="progressbar"] > div > div {
     color: #333;
 }

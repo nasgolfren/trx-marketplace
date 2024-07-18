@@ -14,12 +14,13 @@ class Order extends Model
 
     protected $table = 'orders';
 
-    protected $fillable = ['amount', 'hours', 'price', 'target_address', 'source_address', 'resource', 'partial_fill', 'multisignature', 'total', 'txid', 'show_at'];
+    protected $fillable = ['amount', 'hours', 'price', 'target_address', 'source_address', 'resource', 'partial_fill', 'multisignature', 'total', 'txid', 'show_at', 'is_fullfilled'];
 
     protected $hidden = ['id', 'updated_at', 'deleted_at', 'show_at'];
 
     protected $appends = [
         'filled_amount',
+        'filled_percentage',
     ];
 
     /**
@@ -37,6 +38,11 @@ class Order extends Model
     public function getFilledAmountAttribute(): int
     {
         return $this->sellOrders()->sum('amount');
+    }
+
+    public function getFilledPercentageAttribute(): int
+    {
+        return ((100 * $this->sellOrders()->sum('amount')) / $this->amount);
     }
 
     public function sellOrders(): HasMany
