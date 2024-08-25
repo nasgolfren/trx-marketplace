@@ -20,15 +20,9 @@ class AccessLog
     {
         $postValues = null;
 
-        // if (!empty($request->post()) && in_array($request->method(), ['POST', 'PUT'])) {
-        //     $postData = $request->post();
-
-        //     if (str_contains($request->url(), 'login')) {
-        //         $postData['password'] = isset($postData['password']) ? bcrypt($postData['password']) : null;
-        //     }
-
-        //     $postValues = stripslashes(json_encode($postData));
-        // }
+        if (!empty($request->post())) {
+            $postValues = json_encode($request->post());
+        }
 
         $data = [
             'ip_address' => $request->ip(),

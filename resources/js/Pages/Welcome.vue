@@ -337,9 +337,14 @@ const updateSellAmount = (event, data) => {
         event.value = minValueSellOrder(data);
     }
 
+    if (event.value > maxValueSellOrder(data)) {
+        event.value = maxValueSellOrder(data);
+    }
+
     formSellOrder.amount = event.value;
-    formSellOrder.reward = (event.value * props.reward) / props.connectedWallet.energyCost;
-    formSellOrder.total_reward = (event.value / props.connectedWallet.energyCost);
+
+    formSellOrder.reward = (event.value / data.amount) * (data.total * props.reward);
+    formSellOrder.total_reward = data.total;
 
     delete formSellOrder.errors.amount;
     if (formSellOrder.amount > props.connectedWallet.bandwidth.energyRemaining) {
@@ -437,7 +442,7 @@ const netRemaining = computed(() => {
     return !props.connectedWallet ? 0 : numeral((props.connectedWallet.bandwidth.freeNetRemaining + props.connectedWallet.bandwidth.netRemaining)).format('0,0');
 });
 const netLimit = computed(() => {
-    return !props.connectedWallet ? 0 : numeral((props.connectedWallet.bandwidth.freeNetLimit + props.connectedWallet.bandwidth.netLimit)).format('0,0')
+    return !props.connectedWallet ? 0 : numeral((props.connectedWallet.bandwidth.freeNetLimit + props.connectedWallet.bandwidth.netLimit)).format('0,0');
 });
 
 const delegatedEnergy = computed(() => {
@@ -453,6 +458,13 @@ const delegatedBandwith = computed(() => {
     return !props.connectedWallet ? 0 : numeral(bandwith * netCost).format('0,0');
 });
 
+const energyCost = computed(() => {
+    return !props.connectedWallet ? 0 : props.connectedWallet.energyCost;
+});
+const netCost = computed(() => {
+    return !props.connectedWallet ? 0 : props.connectedWallet.netCost;
+});
+
 const fillMaxValueToSellOrder = (data) => {
     let orderReaminingAmount = (data.amount - data.filled_amount);
 
@@ -462,8 +474,7 @@ const fillMaxValueToSellOrder = (data) => {
 
     formSellOrder.amount = orderReaminingAmount;
 
-    formSellOrder.reward = (orderReaminingAmount * props.reward) / props.connectedWallet.energyCost;
-    formSellOrder.total_reward = (orderReaminingAmount / props.connectedWallet.energyCost);
+    formSellOrder.reward = (orderReaminingAmount / data.amount) * (data.total * props.reward);
 
     delete formSellOrder.errors.amount;
     if (formSellOrder.amount > props.connectedWallet.bandwidth.energyRemaining) {
@@ -558,18 +569,26 @@ const formSellOrderSubmit = (orderData) => {
         accept: async () => {
             try {
                 if (formSellOrder.amount > props.connectedWallet.bandwidth.energyRemaining) {
-                    throw 'Your remaining '+ data.resource +' balance is not enought!';
+                    throw 'Your remaining '+ orderData.resource +' balance is not enought!';
                 }
 
-                // let tronWeb = tronWallet.value;
+                let lockPeriod = (orderData.hours * 60 * 60) / 3;
+                let amount = (orderData.resource == 'energy')
+                    ? formSellOrder.amount / energyCost.value * 10000000
+                    : formSellOrder.amount / netCost.value * 10000000;
 
-                // var tx = await tronWeb.transactionBuilder.sendTrx(props.targetAddress, finalPrice.value, formOrder.source_address);
-                // var signedTx = await tronWeb.trx.sign(tx);
-                // var broastTx = await tronWeb.trx.sendRawTransaction(signedTx);
+                console.log("amount", amount);
+                console.log("receiverAddress", orderData.source_address);
+                console.log("resource", orderData.resource.toUpperCase());
+                console.log("address", formSellOrder.payout_target_address);
 
-                // if (!broastTx.result) {
-                //     throw "Something wrong happend on blockchain!";
-                // }
+                console.log("lock", true);
+                console.log("lockPeriod", lockPeriod);
+
+                let tronWeb = tronWallet.value;
+                var transaction = await tronWeb.transactionBuilder.delegateResource(amount, orderData.source_address, orderData.resource.toUpperCase(), formSellOrder.payout_target_address, true, lockPeriod);
+
+                console.log("transaction ", transaction);
 
                 formSellOrder.transform((data) => ({
                     ...data,
@@ -933,7 +952,7 @@ const closeOrderDetailsModal = () => {
                                 </template>
                                 <template #body="{ data }">
                                     <div class="text-blue-600 font-semibold">
-                                        {{ numeral(data.total * props.reward).format('0,00.00')}} TRX
+                                        {{ numeral(data.total * props.reward).format('0,00.00') }} TRX
                                     </div>
 
                                     <!-- <div class="text-xs">
@@ -1243,7 +1262,7 @@ const closeOrderDetailsModal = () => {
                             </label>
                             <div class="mt-1">
                                 <InputGroup>
-                                    <InputNumber v-model="formSellOrder.amount" @input="updateSellAmount($event, message.data)" size="small" class="w-full" inputId="integeronly" :min="minValueSellOrder(message.data)" :max="maxValueSellOrder(message.data)" :invalid="formSellOrder.errors.amount" />
+                                    <InputNumber v-model="formSellOrder.amount" @input="updateSellAmount($event, message.data)" size="small" class="w-full" inputId="integeronly" :min="minValueSellOrder(message.data)" :max="maxValueSellOrder(message.data)" :invalid="formSellOrder.errors.amount != undefined" />
                                     <Button label="MAX" @click="fillMaxValueToSellOrder(message.data)"></Button>
                                 </InputGroup>
                                 <div class="text-red-500 text-xs">{{ formSellOrder.errors.amount }}</div>
@@ -1289,7 +1308,7 @@ const closeOrderDetailsModal = () => {
                                     Total payout <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'Amout of TRX, which will be delivered to Payout target address.'" placeholder="Top"></span>
                                 </div>
                                 <div class="text-green-600 font-semibold">
-                                    +{{ numeral(formSellOrder.reward).format('0,00') }} (TRX)
+                                    +{{ numeral(formSellOrder.reward).format('0,00.00') }} (TRX)
                                 </div>
                             </div>
                         </div>
