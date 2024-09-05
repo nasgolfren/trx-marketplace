@@ -66,7 +66,7 @@ const formSellOrder = useForm({
 const props = defineProps({
     orders: Array,
     myOrders: Array,
-    durations: Array,
+    myReceipts: Array,
     resources: Array,
     formConfig: Object,
     connectedWallet: Object,
@@ -122,13 +122,6 @@ onBeforeMount(() => {
 })
 
 onMounted(async () => {
-    if (props.connectedWallet) {
-        await initTrxWallet();
-
-        formOrder.source_address = props.connectedWallet.address;
-        formSellOrder.payout_target_address = props.connectedWallet.address;
-    }
-
     // Tronlink events
     window.addEventListener('message', async function (e) {
         if (e.data.message && e.data.message.action == "tabReply") {
@@ -136,6 +129,17 @@ onMounted(async () => {
 
             if (e.data.message.data.data.node && e.data.message.data.data.node.chain == '_'){
                 console.log("tronLink currently selects the main chain 1")
+
+                if (!tronWallet.value) {
+                    await initTrxWallet(true, false);
+                }
+
+                if (props.connectedWallet) {
+                    await initTrxWallet(true, false);
+
+                    formOrder.source_address = props.connectedWallet.address;
+                    formSellOrder.payout_target_address = props.connectedWallet.address;
+                }
             }else{
                 console.log("tronLink currently selects the side chain 1 - else")
             }
@@ -200,15 +204,18 @@ onMounted(async () => {
             }
         }
     });
+
+
 })
 
+const initTrxWallet = async (initProcess = true, getWalletInfo = true) => {
+    let obj = setTimeout(async function () {
+        try {
+            if (window.tronLink == undefined) {
+                throw 'TronLink is not connected';
+            }
 
-const initTrxWallet = async (initProcess = true) => {
-    try {
-        walletLoading.value = true;
-
-        let obj = setTimeout(async function () {
-            if (window.tronLink.ready) {
+            if (window?.tronLink?.ready) {
                 tronWeb = tronLink.tronWeb;
             } else {
                 const res = await tronLink.request({ method: 'tron_requestAccounts' });
@@ -220,14 +227,18 @@ const initTrxWallet = async (initProcess = true) => {
 
             tronWallet.value = tronWeb;
 
-            await __showTronInfo(initProcess);
+            if (getWalletInfo) {
+                walletLoading.value = true;
+
+                await __showTronInfo(initProcess);
+            }
 
             clearInterval(obj);
-        }, 50);
-    } catch (error) {
-        walletLoading.value = false;
-        console.log('initTrxWallet - try: ', error);
-    }
+        } catch (error) {
+            //walletLoading.value = false;
+            console.log('initTrxWallet - try 1: ', error);
+        }
+    }, 50);
 }
 
 async function __showTronInfo(initProcess = true, changedWallet = null) {
@@ -574,25 +585,25 @@ const formSellOrderSubmit = (orderData) => {
 
                 let lockPeriod = (orderData.hours * 60 * 60) / 3;
                 let amount = (orderData.resource == 'energy')
-                    ? formSellOrder.amount / energyCost.value * 10000000
-                    : formSellOrder.amount / netCost.value * 10000000;
-
-                console.log("amount", amount);
-                console.log("receiverAddress", orderData.source_address);
-                console.log("resource", orderData.resource.toUpperCase());
-                console.log("address", formSellOrder.payout_target_address);
-
-                console.log("lock", true);
-                console.log("lockPeriod", lockPeriod);
+                    ? Math.ceil((formSellOrder.amount / energyCost.value)) * 1000000
+                    : Math.ceil((formSellOrder.amount / netCost.value)) * 1000000;
 
                 let tronWeb = tronWallet.value;
-                var transaction = await tronWeb.transactionBuilder.delegateResource(amount, orderData.source_address, orderData.resource.toUpperCase(), formSellOrder.payout_target_address, true, lockPeriod);
 
-                console.log("transaction ", transaction);
+                var transaction = await tronWeb.transactionBuilder.delegateResource(amount, orderData.source_address, orderData.resource.toUpperCase(), formSellOrder.payout_target_address, true, lockPeriod);
+                var signedTx = await tronWeb.trx.sign(transaction);
+                var broastTx = await tronWeb.trx.sendRawTransaction(signedTx);
+
+                if (!broastTx.result) {
+                    throw "Something wrong happend on blockchain!";
+                }
 
                 formSellOrder.transform((data) => ({
                     ...data,
                     'resource': orderData.resource,
+                    'delegated_amount_sun': amount,
+                    'delegated_amount_trx': amount / 1000000,
+                    'txid': broastTx.txid,
                 }))
                 .post('/orders/' + orderData.unique_id, {
                     errorBag: 'formSellOrder',
@@ -1056,9 +1067,46 @@ const closeOrderDetailsModal = () => {
                             </div>
                         </template>
 
-                        <p class="m-0">
-                            Sell orders
-                        </p>
+                        <DataTable class="mt-4" :value="myReceipts" stripedRows paginator :size="'small'" :rows="10" :rowsPerPageOptions="[10, 20, 50]">
+                            <!-- <Column header="">
+                                <template #body="{ data }">
+                                    <Button icon="pi pi-info-circle" severity="info" text outlined rounded aria-label="User" @click="showOrderDetails(data)" />
+                                </template>
+                            </Column> -->
+                            <Column field="created_at" header="Date">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The date when the order has been created'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    {{ moment(data.created_at).format('h:mm') }}
+                                    <div class="text-xs">{{ moment(data.created_at).format('MM-DD') }}</div>
+                                </template>
+                            </Column>
+                            <Column field="order.source_address" header="Receiver">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The receiver address'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    {{ data.order.source_address }}
+                                </template>
+                            </Column>
+                            <Column field="delegated_amount_trx" header="Delegated">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'Type of resource'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    {{ data.delegated_amount_trx }} TRX
+                                </template>
+                            </Column>
+                            <Column header="TxID">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The price/day in SUN for resource unit. Note: 1 SUN = 0.000001 TRX'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    {{ data.txid }}
+                                </template>
+                            </Column>
+                        </DataTable>
                     </TabPanel>
                 </TabView>
             </div>
@@ -1129,7 +1177,7 @@ const closeOrderDetailsModal = () => {
         </template>
     </Dialog>
 
-    <ConfirmDialog group="confirmBuyOrder">
+    <ConfirmDialog group="confirmBuyOrder" aria-modal>
         <template #container="{ message, acceptCallback, rejectCallback }">
             <div class="flex flex-col items-center p-5 bg-surface-0 dark:bg-surface-700 rounded-md">
                 <div class="rounded-full bg-primary-500 dark:bg-primary-400 text-surface-0 dark:text-surface-900 inline-flex justify-center items-center h-[6rem] w-[6rem] -mt-[3rem]">
@@ -1246,7 +1294,7 @@ const closeOrderDetailsModal = () => {
         </template>
     </ConfirmDialog>
 
-    <ConfirmDialog group="confirmSellOrder">
+    <ConfirmDialog group="confirmSellOrder" aria-modal>
         <template #container="{ message, acceptCallback, rejectCallback }">
             <div class="flex flex-col items-center p-5 bg-surface-0 dark:bg-surface-700 rounded-md">
                 <div class="rounded-full bg-primary-500 dark:bg-primary-400 text-surface-0 dark:text-surface-900 inline-flex justify-center items-center h-[6rem] w-[6rem] -mt-[3rem]">

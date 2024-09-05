@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Services\GeneralService;
 use App\Models\Order;
+use App\Models\OrderSell;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -28,10 +29,16 @@ class HomeController extends Controller
                     ->get(),
                 'myOrders' => (session('connectedWallet') == null)
                     ? []
-                    : Order::where('source_address', Arr::get(session('connectedWallet'), 'address'))->where('show_at', '<', now())->orderBy('created_at', 'desc')->get(),
+                    : Order::where('source_address', Arr::get(session('connectedWallet'), 'address'))
+                        ->where('show_at', '<', now())
+                        ->orderBy('created_at', 'desc')
+                        ->get(),
                 'myReceipts' => (session('connectedWallet') == null)
                     ? []
-                    : [],
+                    : OrderSell::where('payout_target_address', Arr::get(session('connectedWallet'), 'address'))
+                        ->orderBy('created_at', 'desc')
+                        ->with(['order'])
+                        ->get(),
                 'resources' => config('app.resources'),
                 'formConfig' => config('app.formConfig'),
                 'targetAddress' => config('app.targetAddress'),

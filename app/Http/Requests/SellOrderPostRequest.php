@@ -30,10 +30,12 @@ class SellOrderPostRequest extends FormRequest
             'payout_target_address' => 'required|string|min:34|max:100',
 
             'amount' => 'required|integer|max:' . $maxBigIntValue,
+            'delegated_amount_sun' => 'required|integer|max:' . $maxBigIntValue,
+            'delegated_amount_trx' => 'required|integer|max:' . $maxBigIntValue,
             'reward' => 'required|numeric',
             'total_reward' => 'required|numeric',
 
-            //'txid' => 'required|string|max:190',
+            'txid' => 'required|string|max:190',
         ];
     }
 
