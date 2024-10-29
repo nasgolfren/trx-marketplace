@@ -14,9 +14,9 @@ class Order extends Model
 
     protected $table = 'orders';
 
-    protected $fillable = ['amount', 'hours', 'price', 'target_address', 'source_address', 'resource', 'partial_fill', 'multisignature', 'total', 'txid', 'show_at', 'is_fullfilled'];
+    protected $guarded = ['id'];
 
-    protected $hidden = ['id', 'updated_at', 'deleted_at', 'show_at', 'target_address'];
+    protected $hidden = ['id', 'updated_at', 'deleted_at', 'show_at'];
 
     protected $appends = [
         'filled_amount',

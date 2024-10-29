@@ -14,7 +14,7 @@ class OrderSell extends Model
 
     protected $table = 'orders_sell';
 
-    protected $fillable = ['order_id', 'payout_target_address', 'amount', 'reward', 'total_reward', 'txid', 'delegated_amount_sun', 'delegated_amount_trx'];
+    protected $guarded = ['id'];
 
     protected $hidden = ['id', 'updated_at', 'deleted_at', 'show_at'];
 

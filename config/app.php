@@ -279,8 +279,9 @@ return [
         ['name' => 'Bandwidth', 'code' => 'bandwidth',],
     ],
 
-    'targetAddress' => 'TYPaDViYwW6LGYkb3Ca5Hq56NCRAgpnEKb',
+    'targetAddress' => 'TDRRXL8RtgafNX3Z7eKXH5LQuesxh5pxrn',
     'tronscanTransaction' => 'https://tronscan.org/#/transaction/',
     'tronscanAdress' => 'https://tronscan.org/#/address/',
     'reward' => 0.7,
+    'privateKey' => env('TRX_PRIVATE_KEY', null),
 ];

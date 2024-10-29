@@ -29,6 +29,8 @@ import numeral from 'numeral';
 import { convertJsonToReadableText, isValueHours } from '@/functions';
 import TabView from 'primevue/tabview';
 import TabPanel from 'primevue/tabpanel';
+import * as CryptoUtils from "@tronscan/client/src/utils/crypto";
+import * as TransactionUtils from "@tronscan/client/src/utils/transactionBuilder";
 
 
 /**
@@ -45,6 +47,7 @@ const showOrderDetailsModal = ref(false);
 const walletLoading = ref(false);
 const tronWallet = ref();
 let refreshWalletInterval = null;
+const permissions = ref();
 
 const formOrder = useForm({
     amount: 0,
@@ -61,6 +64,9 @@ const formSellOrder = useForm({
     reward: 0,
     total_reward: 0,
     payout_target_address: '',
+    multisignature_address: '',
+    multisignature: false,
+    selectedPermission: null,
 });
 
 const props = defineProps({
@@ -74,6 +80,7 @@ const props = defineProps({
     tronscanTransaction: String,
     tronscanAdress: String,
     reward: Number,
+    privateKey: String,
 });
 
 const buttonitems = [
@@ -84,6 +91,7 @@ const buttonitems = [
             tronWallet.value = null;
             delete formOrder.errors.source_address;
             delete formSellOrder.errors.payout_target_address;
+            delete formSellOrder.errors.multisignature_address;
 
             clearInterval(refreshWalletInterval);
             refreshWalletInterval = null;
@@ -122,6 +130,10 @@ onBeforeMount(() => {
 })
 
 onMounted(async () => {
+    if (!tronWallet.value) {
+        await initTrxWallet(true, false);
+    }
+
     // Tronlink events
     window.addEventListener('message', async function (e) {
         if (e.data.message && e.data.message.action == "tabReply") {
@@ -140,7 +152,7 @@ onMounted(async () => {
                     formOrder.source_address = props.connectedWallet.address;
                     formSellOrder.payout_target_address = props.connectedWallet.address;
                 }
-            }else{
+            } else {
                 console.log("tronLink currently selects the side chain 1 - else")
             }
         }
@@ -211,18 +223,25 @@ onMounted(async () => {
 const initTrxWallet = async (initProcess = true, getWalletInfo = true) => {
     let obj = setTimeout(async function () {
         try {
-            if (window.tronLink == undefined) {
+            if (window.tronLink == undefined || window.tronWeb == undefined) {
                 throw 'TronLink is not connected';
             }
 
-            if (window?.tronLink?.ready) {
+            if (!window.tronWeb || !window.tronWeb.ready) {
+                throw 'Waiting for TronLink to be ready...';
+            }
+
+            if (window.tronLink.ready) {
                 tronWeb = tronLink.tronWeb;
             } else {
-                const res = await tronLink.request({ method: 'tron_requestAccounts' });
-
+                    const res = await tronLink.request({ method: 'tron_requestAccounts' });
                 if (res.code === 200) {
                     tronWeb = tronLink.tronWeb;
                 }
+            }
+
+            if (!tronWeb.defaultAddress || !tronWeb.defaultAddress.base58) {
+                throw 'TronWeb is not iniciated correctly!';
             }
 
             tronWallet.value = tronWeb;
@@ -343,23 +362,23 @@ const minPriceValue = computed(() => {
 const updateAmount = (event) => {
     formOrder.amount = event.value;
 };
-const updateSellAmount = (event, data) => {
-    if (event.value < minValueSellOrder(data)) {
-        event.value = minValueSellOrder(data);
+const updateSellAmount = (event, order) => {
+    if (event.value < minValueSellOrder(order)) {
+        event.value = minValueSellOrder(order);
     }
 
-    if (event.value > maxValueSellOrder(data)) {
-        event.value = maxValueSellOrder(data);
+    if (event.value > maxValueSellOrder(order)) {
+        event.value = maxValueSellOrder(order);
     }
 
     formSellOrder.amount = event.value;
 
-    formSellOrder.reward = (event.value / data.amount) * (data.total * props.reward);
-    formSellOrder.total_reward = data.total;
+    formSellOrder.reward = (event.value / order.amount) * (order.total * props.reward);
+    formSellOrder.total_reward = order.total;
 
     delete formSellOrder.errors.amount;
     if (formSellOrder.amount > props.connectedWallet.bandwidth.energyRemaining) {
-        formSellOrder.errors.amount = 'Your remaining '+ data.resource +' balance is not enought!';
+        formSellOrder.errors.amount = 'Your remaining '+ order.resource +' balance is not enought!';
     }
 };
 const updatePrice = (event) => {
@@ -375,26 +394,37 @@ const changeResource = (event) => {
 const changeDuration = (event) => {
     formOrder.price = props.formConfig[formOrder.selectedResource.code].durations.find((duration) => duration.code == formOrder.selectedDurationSource.code).price;
 };
+const changeMultisignature = (event) => {
+    if (!formSellOrder.multisignature) {
+        formSellOrder.multisignature_address = null;
+        formSellOrder.selectedPermission = null;
+        permissions.value = null;
+    }
+};
 
 const tronAddressValidity = async (formType) => {
     let formAddress = formOrder.source_address;
 
     if (formType == 'sell') {
         formAddress = formSellOrder.payout_target_address;
-
-        if (formSellOrder.payout_target_address == '' || formSellOrder.payout_target_address.length < 34) {
-            return;
-        }
-
-        delete formSellOrder.errors.payout_target_address;
     }
 
-    if (formType == 'buy') {
-        if (formOrder.source_address == '' || formOrder.source_address.length < 34) {
-            return;
+    if (formType == 'multisignature') {
+        formAddress = formSellOrder.multisignature_address;
+    }
+
+    if (formAddress == '') {
+        if (formType == 'buy') {
+            delete formOrder.errors.source_address;
+        }
+        if (formType == 'sell') {
+            delete formSellOrder.errors.payout_target_address;
+        }
+        if (formType == 'multisignature') {
+            delete formSellOrder.errors.multisignature_address;
         }
 
-        delete formOrder.errors.source_address;
+        return;
     }
 
     const options = {
@@ -406,25 +436,54 @@ const tronAddressValidity = async (formType) => {
     await fetch('https://api.shasta.trongrid.io/wallet/validateaddress', options)
         .then(response => response.json())
         .then(function (response) {
+            if (response.result) {
+                if (formType == 'buy') {
+                    delete formOrder.errors.source_address;
+                }
+                if (formType == 'sell') {
+                    delete formSellOrder.errors.payout_target_address;
+                }
+                if (formType == 'multisignature') {
+                    delete formSellOrder.errors.multisignature_address;
+                }
+            }
+
             if (response.result == false) {
                 let message = 'Tron address is not valid';
 
-                if (formType == 'sell') {
-                    formSellOrder.errors.payout_target_address = message;
-                }
                 if (formType == 'buy') {
                     formOrder.errors.source_address = message;
                 }
+                if (formType == 'sell') {
+                    formSellOrder.errors.payout_target_address = message;
+                }
+                if (formType == 'multisignature') {
+                    formSellOrder.errors.multisignature_address = message;
+                }
+            }
+
+            if (response.result && formType == 'multisignature') {
+                formSellOrder.selectedPermission = null;
+                permissions.value = null;
+
+                fetch('https://apilist.tronscanapi.com/api/accountv2?address=' + formSellOrder.multisignature_address)
+                    .then(response => response.json())
+                    .then(function (response) {
+                        permissions.value = [response.ownerPermission].concat(response.activePermissions);
+                    });
             }
         })
         .catch(function (error) {
             let message = 'Something goes wrong, try it again or contact admin!';
 
+            if (formType == 'buy') {
+                formOrder.errors.source_address = message;
+            }
             if (formType == 'sell') {
                 formSellOrder.errors.payout_target_address = message;
             }
-            if (formType == 'buy') {
-                formOrder.errors.source_address = message;
+            if (formType == 'multisignature') {
+                formSellOrder.errors.multisignature_address = message;
             }
         });
 };
@@ -514,6 +573,14 @@ const isSubmitButtonDisabled = computed(() => {
         || !formOrder.source_address || formOrder.source_address.length < 34;
 });
 
+const isSellSubmitButtonDisabled = computed(() => {
+    return (!formSellOrder.payout_target_address || formSellOrder.errors.payout_target_address)
+        || (formSellOrder.multisignature
+            && ((!formSellOrder.multisignature_address || formSellOrder.errors.multisignature_address)
+            || (!formSellOrder.selectedPermission))
+        );
+});
+
 const formBuyOrderSubmit = () => {
     confirm.require({
         group: 'confirmBuyOrder',
@@ -526,6 +593,10 @@ const formBuyOrderSubmit = () => {
                 }
 
                 let tronWeb = tronWallet.value;
+
+                if (!tronWeb) {
+                    throw 'Tronlink is not iniciated correctly!';
+                }
 
                 var tx = await tronWeb.transactionBuilder.sendTrx(props.targetAddress, finalPrice.value, formOrder.source_address);
                 var signedTx = await tronWeb.trx.sign(tx);
@@ -569,9 +640,12 @@ const formBuyOrderSubmit = () => {
 };
 
 const formSellOrderSubmit = (orderData) => {
-    if (formSellOrder.amount == 0) {
-        fillMaxValueToSellOrder(orderData);
-    }
+    fillMaxValueToSellOrder(orderData);
+    formSellOrder.multisignature = false;
+    formSellOrder.selectedPermission = null;
+    permissions.value = null;
+    formSellOrder.payout_target_address = props.connectedWallet.address;
+    formSellOrder.multisignature_address = '';
 
     confirm.require({
         group: 'confirmSellOrder',
@@ -579,10 +653,6 @@ const formSellOrderSubmit = (orderData) => {
         data: orderData,
         accept: async () => {
             try {
-                if (formSellOrder.amount > props.connectedWallet.bandwidth.energyRemaining) {
-                    throw 'Your remaining '+ orderData.resource +' balance is not enought!';
-                }
-
                 let lockPeriod = (orderData.hours * 60 * 60) / 3;
                 let amount = (orderData.resource == 'energy')
                     ? Math.ceil((formSellOrder.amount / energyCost.value)) * 1000000
@@ -590,12 +660,75 @@ const formSellOrderSubmit = (orderData) => {
 
                 let tronWeb = tronWallet.value;
 
-                var transaction = await tronWeb.transactionBuilder.delegateResource(amount, orderData.source_address, orderData.resource.toUpperCase(), formSellOrder.payout_target_address, true, lockPeriod);
-                var signedTx = await tronWeb.trx.sign(transaction);
-                var broastTx = await tronWeb.trx.sendRawTransaction(signedTx);
+                if (!tronWeb) {
+                    throw 'Tronlink is not iniciated correctly!';
+                }
 
-                if (!broastTx.result) {
-                    throw "Something wrong happend on blockchain!";
+                try {
+                    if (formSellOrder.multisignature) {
+                        if (!formSellOrder.selectedPermission) {
+                            throw 'Permission is not select!';
+                        }
+
+                        var permissionId = formSellOrder.selectedPermission?.id ?? 0;
+
+                        var unsignedTransaction = await tronWeb.transactionBuilder.delegateResource(amount, orderData.source_address, orderData.resource.toUpperCase(), formSellOrder.multisignature_address, true, lockPeriod, {
+                            permissionId: permissionId,
+                        });
+
+                        var signedTransaction = await tronWeb.trx.multiSign(unsignedTransaction);
+                    } else {
+                        if (formSellOrder.amount > props.connectedWallet.bandwidth.energyRemaining) {
+                            throw 'Your remaining '+ orderData.resource +' balance is not enought!';
+                        }
+
+                        var unsignedTransaction = await tronWeb.transactionBuilder.delegateResource(amount, orderData.source_address, orderData.resource.toUpperCase(), formSellOrder.payout_target_address, true, lockPeriod);
+                        var signedTransaction = await tronWeb.trx.sign(unsignedTransaction);
+                    }
+
+                    var broastTx = await tronWeb.trx.sendRawTransaction(signedTransaction);
+
+                    if (!broastTx) {
+                        throw 'Something wrong happend on blockchain!';
+                    }
+                } catch (error) {
+                    console.log('Delegate operation - error: ', error);
+                    throw error;
+                }
+
+
+                try {
+                    // calculate reward
+                    var reward =  formSellOrder.reward; // * 1000000;
+
+                    console.log("Sending reward: ", reward);
+                    console.log("From wallet: ", props.targetAddress);
+                    console.log("To wallet: ", formSellOrder.payout_target_address);
+                    //console.log("key: ",  props.privateKey);
+                    console.log('---------');
+
+                    let tx = TransactionUtils.buildTransferTransaction('_', props.targetAddress, formSellOrder.payout_target_address, amount);
+                    //var tx = await tronWeb.transactionBuilder.sendTrx(formSellOrder.payout_target_address, reward,  props.targetAddress);
+                    //// 2 var tx = await tronWeb.transactionBuilder.sendTrx(props.targetAddress, reward, formSellOrder.payout_target_address);
+                    console.log('reward transaction: ' , tx);
+
+                    let signedTx = CryptoUtils.signTransaction(props.privateKey, tx);
+                    //var signedTx = await tronWeb.trx.sign(tx, props.privateKey);
+                    console.log("signed reward transaction: ", signedTx);
+
+                    var broastTx = await tronWeb.trx.sendRawTransaction(signedTx);
+                    console.log("broastTx reward: ", broastTx);
+
+                    //// 2 var broastTx = await tronWeb.trx.sendTransaction(formSellOrder.payout_target_address, reward, props.privateKey);
+                    //// 2 console.log("broastTx reward with sendTransaction: ", broastTx);
+
+                    if (!broastTx.result) {
+                        console.log('broastTx reward: ', broastTx);
+                        //throw 'Something wrong happend on blockchain!';
+                    }
+                } catch (error) {
+                    console.log('Reward operation - error: ', error);
+                    throw error;
                 }
 
                 formSellOrder.transform((data) => ({
@@ -603,7 +736,9 @@ const formSellOrderSubmit = (orderData) => {
                     'resource': orderData.resource,
                     'delegated_amount_sun': amount,
                     'delegated_amount_trx': amount / 1000000,
-                    'txid': broastTx.txid,
+                    'txid': broastTx?.txid,
+                    'is_multisignature': formSellOrder.multisignature,
+                    'multisignature_address': formSellOrder.multisignature ? formSellOrder.multisignature_address : null,
                 }))
                 .post('/orders/' + orderData.unique_id, {
                     errorBag: 'formSellOrder',
@@ -689,7 +824,7 @@ const closeOrderDetailsModal = () => {
                         <span v-if="!walletLoading" class="px-3 font-semibold">Connect wallet</span>
                         <span v-else class="pi pi-spin pi-cog" style="font-size: 1.5rem"></span>
                     </Button>
-                    <SplitButton v-else :model="buttonitems" @click="copyTrxWallet()" size="small">
+                    <SplitButton v-else :model="buttonitems" @click="copyTrxWallet()" size="small" aria-modal="true">
                         <span class="pi pi-copy"></span>
                         <span class="ml-2 flex items-center font-bold break-all">{{ connectedWallet.address }}</span>
                     </SplitButton>
@@ -854,7 +989,7 @@ const closeOrderDetailsModal = () => {
                                     <InputGroupAddon>
                                         <i class="pi pi-wallet"></i>
                                     </InputGroupAddon>
-                                    <InputText type="text" v-model="formOrder.source_address" @input="tronAddressValidity('buy')" class="w-full" placeholder="TRX address" :invalid="formOrder.errors.source_address" />
+                                    <InputText type="text" v-model="formOrder.source_address" @input="tronAddressValidity('buy')" class="w-full" placeholder="TRX address" :invalid="formOrder.errors.source_address != undefined" />
                                 </InputGroup>
                                 <div class="text-red-500 text-xs">{{ formOrder.errors.source_address }}</div>
                             </div>
@@ -876,7 +1011,7 @@ const closeOrderDetailsModal = () => {
                                     <Checkbox v-model="formOrder.multisignature" inputId="multisignature" :binary="true" />
                                     <label for="multisignature" class="ml-2">
                                         Multisignature
-                                        <span class="pi pi-question-circle text-primary-500 text-sm pl-1" v-tooltip.top="'If checked a multisignature popup appear to create the multisignature transaction. This works for any kind of multisignature address.'" placeholder="Top"></span>
+                                        <span class="pi pi-question-circle text-primary-500 text-sm pl-1" v-tooltip.top="'If checked it allow the order to be signed with multisignature. This works for any kind of multisignature address.'" placeholder="Top"></span>
                                     </label>
                                 </div>
                             </div>
@@ -1082,20 +1217,31 @@ const closeOrderDetailsModal = () => {
                                     <div class="text-xs">{{ moment(data.created_at).format('MM-DD') }}</div>
                                 </template>
                             </Column>
-                            <Column field="order.source_address" header="Receiver">
+                            <Column field="payout_target_address" header="Receiver">
                                 <template #header>
                                     <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The receiver address'" placeholder="Top"></span>
                                 </template>
                                 <template #body="{ data }">
-                                    {{ data.order.source_address }}
+                                    <a :href="props.tronscanAdress + data.payout_target_address" target="_blank" rel="noopener noreferrer" class="p-button text-primary-500">
+                                        <span class="truncate-text inline-block">{{ data.payout_target_address }}</span>
+                                        <span class="pi pi-external-link ml-2 text-primary-500 center-icon"></span>
+                                    </a>
                                 </template>
                             </Column>
                             <Column field="delegated_amount_trx" header="Delegated">
                                 <template #header>
-                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'Type of resource'" placeholder="Top"></span>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'Delegated amount of TRX'" placeholder="Top"></span>
                                 </template>
                                 <template #body="{ data }">
                                     {{ data.delegated_amount_trx }} TRX
+                                </template>
+                            </Column>
+                            <Column field="reward" header="Payment">
+                                <template #header>
+                                    <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'Sent provision'" placeholder="Top"></span>
+                                </template>
+                                <template #body="{ data }">
+                                    {{ data.reward }} TRX
                                 </template>
                             </Column>
                             <Column header="TxID">
@@ -1103,7 +1249,10 @@ const closeOrderDetailsModal = () => {
                                     <span class="pi pi-question-circle text-primary-500 order-last ml-2" v-tooltip.top="'The price/day in SUN for resource unit. Note: 1 SUN = 0.000001 TRX'" placeholder="Top"></span>
                                 </template>
                                 <template #body="{ data }">
-                                    {{ data.txid }}
+                                    <a :href="props.tronscanTransaction + data.txid" target="_blank" rel="noopener noreferrer" class="p-button text-primary-500">
+                                        <span class="truncate-text inline-block">{{ data.txid }}</span>
+                                        <span class="pi pi-external-link ml-2 text-primary-500 center-icon"></span>
+                                    </a>
                                 </template>
                             </Column>
                         </DataTable>
@@ -1250,7 +1399,7 @@ const closeOrderDetailsModal = () => {
                                     <Checkbox v-model="formOrder.multisignature" inputId="multisignature" :binary="true" disabled />
                                     <label for="multisignature" class="ml-2">
                                         Multisignature
-                                        <span class="pi pi-question-circle text-primary-500 text-sm pl-1" v-tooltip.top="'If checked a multisignature popup appear to create the multisignature transaction. This works for any kind of multisignature address.'" placeholder="Top"></span>
+                                        <span class="pi pi-question-circle text-primary-500 text-sm pl-1" v-tooltip.top="'If checked it allow the order to be signed with multisignature. This works for any kind of multisignature address.'" placeholder="Top"></span>
                                     </label>
                                 </div>
                             </div>
@@ -1326,9 +1475,39 @@ const closeOrderDetailsModal = () => {
                                     <InputGroupAddon>
                                         <i class="pi pi-wallet"></i>
                                     </InputGroupAddon>
-                                    <InputText type="text" v-model="formSellOrder.payout_target_address" @input="tronAddressValidity('sell')" size="small" class="w-full" placeholder="TRX address" :invalid="formSellOrder.errors.payout_target_address" />
+                                    <InputText type="text" v-model="formSellOrder.payout_target_address" @input="tronAddressValidity('sell')" size="small" class="w-full" placeholder="TRX address" :invalid="formSellOrder.errors.payout_target_address != undefined" />
                                 </InputGroup>
                                 <div class="text-red-500 text-xs">{{ formSellOrder.errors.payout_target_address }}</div>
+                            </div>
+                        </div>
+
+                        <div class="w-full mt-5" v-if="message.data.multisignature">
+                            <Checkbox v-model="formSellOrder.multisignature" @change="changeMultisignature" inputId="sellMultisignature" :binary="true" />
+                            <label for="sellMultisignature" class="ml-2">
+                                Multisignature
+                                <span class="pi pi-question-circle text-primary-500 text-sm pl-1" v-tooltip.top="'If checked a multisignature form appear to create the multisignature transaction. This works for any kind of multisignature address.'" placeholder="Top"></span>
+                            </label>
+                        </div>
+
+                        <div class="w-full mt-2" v-if="formSellOrder.multisignature">
+                            <label class="block text-xs font-medium text-gray-900">
+                                Multisignature address <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The address it would be for contract signature for. It cannot be any invalid address.'" placeholder="Top"></span>
+                            </label>
+                            <div class="mt-1">
+                                <InputGroup>
+                                    <InputGroupAddon>
+                                        <i class="pi pi-wallet"></i>
+                                    </InputGroupAddon>
+                                    <InputText type="text" v-model="formSellOrder.multisignature_address" @input="tronAddressValidity('multisignature')" size="small" class="w-full" placeholder="TRX address" :invalid="formSellOrder.errors.multisignature_address != undefined" />
+                                </InputGroup>
+                                <div class="text-red-500 text-xs">{{ formSellOrder.errors.multisignature_address }}</div>
+                            </div>
+
+                            <label class="block text-xs font-medium text-gray-900 mt-2">
+                                Permission <span class="pi pi-question-circle text-primary-500" v-tooltip.top="'The resource type for the order'" placeholder="Top"></span>
+                            </label>
+                            <div class="mt-1">
+                                <Dropdown v-model="formSellOrder.selectedPermission" :options="permissions" class="w-full" :optionLabel="(item) => 'id ' + (item.id ?? 0) + ': ' + item.permission_name" />
                             </div>
                         </div>
 
@@ -1364,7 +1543,7 @@ const closeOrderDetailsModal = () => {
                 </div>
 
                 <div class="flex items-center gap-2 mt-4">
-                    <Button label="Fill Order" @click="acceptCallback"></Button>
+                    <Button label="Fill Order" @click="acceptCallback" :disabled="isSellSubmitButtonDisabled"></Button>
                     <Button label="Cancel" severity="danger" outlined @click="rejectCallback"></Button>
                 </div>
             </div>
@@ -1385,5 +1564,17 @@ const closeOrderDetailsModal = () => {
 
 [data-pc-name="progressbar"] > div > div {
     color: #333;
+}
+
+.truncate-text {
+    width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.center-icon {
+    position: relative;
+    top: -5px;
 }
 </style>

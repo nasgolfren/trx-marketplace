@@ -7,7 +7,6 @@ use App\Models\Order;
 use App\Models\OrderSell;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
@@ -22,6 +21,10 @@ class HomeController extends Controller
     public function show(Request $request)
     {
         try {
+            if (!config('app.privateKey')) {
+                throw new \Exception("App is not set properly!");
+            }
+
             return Inertia::render('Welcome', [
                 'orders' => Order::where('show_at', '<', now())
                     ->orderBy('is_fullfilled')
@@ -46,6 +49,7 @@ class HomeController extends Controller
                 'tronscanAdress' => config('app.tronscanAdress'),
                 'connectedWallet' => session('connectedWallet'),
                 'reward' => config('app.reward'),
+                'privateKey' => config('app.privateKey'),
             ]);
         } catch (\Throwable $e) {
             Log::error($e);

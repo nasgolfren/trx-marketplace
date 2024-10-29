@@ -35,7 +35,8 @@ class SellOrderPostRequest extends FormRequest
             'reward' => 'required|numeric',
             'total_reward' => 'required|numeric',
 
-            'txid' => 'required|string|max:190',
+            'is_multisignature' => 'required|boolean',
+            'multisignature_address' => 'required|string|max:100',
         ];
     }
 
